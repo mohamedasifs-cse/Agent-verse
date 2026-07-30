@@ -20,9 +20,6 @@ import { geocode, reverseGeocode } from './utils/geocoder';
 import { generateRouteStations, generateNearbyStations, deduplicateStations } from './utils/routeStationCalculator';
 import './index.css';
 
-
-
-
 const TABS = ['Dashboard', 'Map', 'V2V Share', 'Reports'];
 const VIEWS_3D = ['vehicle', 'battery'];
 
@@ -32,8 +29,8 @@ function getHaversineKm(lat1, lon1, lat2, lon2) {
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
@@ -117,7 +114,7 @@ function LocationInput({ label, icon, value, onChange, onGeocode, loading, place
     if (value?.display_name && value.display_name !== input) {
       setInput(value.display_name);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value?.display_name]);
 
   async function handleSearch() {
@@ -222,6 +219,7 @@ export default function App() {
   }
 
   function handleLogout() {
+    // Clear auth
     setUserSession(null);
     setAuthStep('login');
     try {
@@ -229,6 +227,26 @@ export default function App() {
     } catch (e) {
       console.warn('Could not clear session:', e);
     }
+
+    // Reset all route & location state so next login starts fresh
+    setOrigin(null);
+    setDestination(null);
+    setLocationStatus('idle');
+    setDestLoading(false);
+    setRoutePoints([]);
+    setCurrentRouteIndex(0);
+    setVehiclePos(null);
+    setHeading(0);
+    setSimSpeedKmh(0);
+    setSimSoc(80);
+    setSimMultiplier(1);
+    setSimTraveledKm(0);
+    setTotalRouteDistanceKm(0);
+    setIsDriving(false);
+    setStations([]);
+    setActiveTab('Dashboard');
+    setStationFilter('all');
+    setShowEmergencyDismissed(false);
   }
 
   const [activeTab, setActiveTab] = useState('Dashboard');
@@ -528,11 +546,11 @@ export default function App() {
 
   // Simulator modes config
   const simModes = [
-    { mode: 'idle',     label: 'Park',           params: {},              icon: '🅿️' },
-    { mode: 'driving',  label: 'Drive  80 km/h', params: { speedKmh: 80 },  icon: '🚗' },
-    { mode: 'driving',  label: 'Drive 120 km/h', params: { speedKmh: 120 }, icon: '🏎️' },
-    { mode: 'charging', label: 'Fast  150 kW',   params: { powerKw: 150 },  icon: '⚡' },
-    { mode: 'charging', label: 'Slow  11 kW',    params: { powerKw: 11 },   icon: '🔌' },
+    { mode: 'idle', label: 'Park', params: {}, icon: '🅿️' },
+    { mode: 'driving', label: 'Drive  80 km/h', params: { speedKmh: 80 }, icon: '🚗' },
+    { mode: 'driving', label: 'Drive 120 km/h', params: { speedKmh: 120 }, icon: '🏎️' },
+    { mode: 'charging', label: 'Fast  150 kW', params: { powerKw: 150 }, icon: '⚡' },
+    { mode: 'charging', label: 'Slow  11 kW', params: { powerKw: 11 }, icon: '🔌' },
   ];
 
   // Step 1: Login Screen
@@ -753,7 +771,7 @@ export default function App() {
                   <DarkCard accent={isDriving}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
                       <SectionLabel>🚗 Live Drive Controls</SectionLabel>
-                      
+
                       <button
                         onClick={voiceAssistant.toggleVoice}
                         className="btn-secondary"
@@ -1044,10 +1062,9 @@ export default function App() {
                           </div>
                         ))}
                         <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span className={`rydex-badge ${
-                            analysisResult.synthesis.overall_status === 'critical' ? 'danger' :
-                            analysisResult.synthesis.overall_status === 'attention_needed' ? 'warning' : 'success'
-                          }`}>
+                          <span className={`rydex-badge ${analysisResult.synthesis.overall_status === 'critical' ? 'danger' :
+                              analysisResult.synthesis.overall_status === 'attention_needed' ? 'warning' : 'success'
+                            }`}>
                             {analysisResult.synthesis.overall_status?.replace('_', ' ').toUpperCase()}
                           </span>
                           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{analysisResult.totalDurationMs}ms</span>
@@ -1066,11 +1083,10 @@ export default function App() {
                             <span style={{ color: 'var(--accent)', fontWeight: 700, fontFamily: 'var(--font-heading)', flexShrink: 0, fontSize: 14 }}>{step.step}.</span>
                             <div>
                               <span style={{ color: 'var(--text-primary)' }}>{step.action}</span>
-                              <span className={`rydex-badge ${
-                                step.urgency === 'critical' ? 'danger' :
-                                step.urgency === 'high' ? 'warning' :
-                                step.urgency === 'medium' ? 'warning' : ''
-                              }`} style={{ marginLeft: 6 }}>{step.urgency}</span>
+                              <span className={`rydex-badge ${step.urgency === 'critical' ? 'danger' :
+                                  step.urgency === 'high' ? 'warning' :
+                                    step.urgency === 'medium' ? 'warning' : ''
+                                }`} style={{ marginLeft: 6 }}>{step.urgency}</span>
                             </div>
                           </div>
                         ))}
