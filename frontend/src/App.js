@@ -82,7 +82,8 @@ function SectionLabel({ children }) {
   return <div className="section-label" style={{ marginBottom: 12 }}>{children}</div>;
 }
 
-// ── Primary Button ────────────────────────────────────────────────────────────
+// ── Primary Button (reserved for future use) ─────────────────────────────────
+// eslint-disable-next-line no-unused-vars
 function PrimaryButton({ onClick, disabled, children, fullWidth = false, style = {} }) {
   return (
     <motion.button
@@ -180,8 +181,9 @@ function LocationInput({ label, icon, value, onChange, onGeocode, loading, place
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
+  // eslint-disable-next-line no-unused-vars
   const {
-    telemetry, vehicleId, agentLog, activeAgents,
+    telemetry, activeAgents,
     analysisResult, isAnalyzing, stations, connected,
     setSimulatorMode, runAnalysis, fetchStations, setStations,
   } = useEVSystem();
@@ -241,9 +243,9 @@ export default function App() {
   // Auto-fetch nearby stations whenever origin location is available/updated
   useEffect(() => {
     if (origin?.lat && origin?.lon) {
-      fetchStations(origin.lat, origin.lon);
+      fetchStations(origin.lat, origin.lon, origin.display_name);
     }
-  }, [origin?.lat, origin?.lon, fetchStations]);
+  }, [origin?.lat, origin?.lon, origin?.display_name, fetchStations]);
 
   // ── Driving Simulation State ──
   const [isDriving, setIsDriving] = useState(false);
@@ -286,22 +288,22 @@ export default function App() {
       setTotalRouteDistanceKm(+totalKm.toFixed(1));
       setSimTraveledKm(0);
 
-      // Generate route stations along polyline and update stations state
-      const { allStations } = generateRouteStations(
-        data.points,
-        { lat: data.points[0][0], lon: data.points[0][1] },
-        { lat: data.points[data.points.length - 1][0], lon: data.points[data.points.length - 1][1] },
-        stations
-      );
-      if (allStations && allStations.length > 0) {
-        setStations(allStations);
-      }
+      // Generate route stations along polyline while preserving existing nearby stations
+      setStations(prev => {
+        const { allStations } = generateRouteStations(
+          data.points,
+          { lat: data.points[0][0], lon: data.points[0][1] },
+          { lat: data.points[data.points.length - 1][0], lon: data.points[data.points.length - 1][1] },
+          prev
+        );
+        return allStations && allStations.length > 0 ? allStations : prev;
+      });
     } else {
       setRoutePoints([]);
       setTotalRouteDistanceKm(0);
       setSimTraveledKm(0);
     }
-  }, [stations, setStations]);
+  }, [setStations]);
 
 
   // Drive animation simulation loop
@@ -383,7 +385,7 @@ export default function App() {
     totalRouteKm: totalRouteDistanceKm,
   };
 
-  // Active charging stations (prioritizes active route stations when navigating)
+  // Active charging stations (calculates real-time distance & orders by proximity to current location)
   const activeStations = useMemo(() => {
     let list = [];
     if (routePoints && routePoints.length > 1 && origin && destination) {
@@ -399,23 +401,31 @@ export default function App() {
       list = stations;
     }
     if (list.length === 0) {
-      const targetLat = origin?.lat || 11.0168; // Sri Eshwar / Coimbatore default
-      const targetLon = origin?.lon || 76.9558;
-      list = generateNearbyStations(targetLat, targetLon, 8);
+      const targetLat = vehiclePos?.lat || origin?.lat || 11.0168; // Current position default
+      const targetLon = vehiclePos?.lon || origin?.lon || 76.9558;
+      list = generateNearbyStations(targetLat, targetLon, 8, origin?.display_name);
     }
-    return deduplicateStations(list);
-  }, [stations, routePoints, origin, destination]);
 
+    const currentPos = vehiclePos || origin || { lat: 11.0168, lon: 76.9558 };
 
+    // Dynamically update distance for every station relative to current vehicle position
+    const updated = list.map((st) => {
+      if (st.lat && st.lon && currentPos?.lat && currentPos?.lon) {
+        const dist = +(getHaversineKm(currentPos.lat, currentPos.lon, st.lat, st.lon).toFixed(1));
+        return {
+          ...st,
+          distance_km: dist,
+          distanceFromOriginKm: dist,
+        };
+      }
+      return st;
+    });
 
+    // Sort by proximity to current location (nearest stations first)
+    updated.sort((a, b) => (a.distance_km ?? 999) - (b.distance_km ?? 999));
 
-  // Auto-fetch real charging stations dynamically when origin or destination changes
-  useEffect(() => {
-    const target = destination || origin;
-    if (target?.lat && target?.lon) {
-      fetchStations(target.lat, target.lon);
-    }
-  }, [origin, destination, fetchStations]);
+    return deduplicateStations(updated);
+  }, [stations, routePoints, origin, destination, vehiclePos]);
 
 
   // AI Voice Assistant Hook
@@ -463,6 +473,7 @@ export default function App() {
     );
   }
 
+  // eslint-disable-next-line no-unused-vars
   async function handleDestGeocode(query) {
     setDestLoading(true);
     try {

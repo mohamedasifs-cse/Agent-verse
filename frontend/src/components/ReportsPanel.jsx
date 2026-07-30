@@ -6,7 +6,6 @@ import { motion } from 'framer-motion';
  */
 export default function ReportsPanel({ telemetry, vehicleName = 'TATA Safari EV', agentResults }) {
   const analyticsData = agentResults?.analytics;
-  const pricingData = agentResults?.pricing;
   const energyData = agentResults?.energy;
 
   // Real-time telemetry fallbacks

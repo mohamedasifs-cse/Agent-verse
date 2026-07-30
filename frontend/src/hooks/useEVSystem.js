@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import axios from 'axios';
-import { generateNearbyStations, fetchRealStationsFromOSM } from '../utils/routeStationCalculator';
+import { generateNearbyStations, fetchRealStationsFromOSM, fetchRealStationsFromOCM, deduplicateStations } from '../utils/routeStationCalculator';
 
 const API_BASE = 'http://localhost:5000/api';
 const SOCKET_URL = 'http://localhost:5000';
@@ -61,32 +61,47 @@ export function useEVSystem() {
     return () => socket.disconnect();
   }, []);
 
-  // ── Auto-fetch real stations dynamically for any GPS location ─────────────────
-  const fetchStations = useCallback(async (lat, lon) => {
+  // ── Auto-fetch REAL ORIGINAL stations dynamically for any GPS location ─────────────────
+  const fetchStations = useCallback(async (lat, lon, locationName = '') => {
     if (!lat || !lon) return;
+
     setStationsLoading(true);
-    let fetched = [];
+    let realOriginal = [];
+
+    // 1. Fetch real original stations from OpenChargeMap API
     try {
-      const res = await axios.get(`${API_BASE}/stations`, {
-        params: { lat, lon, radius: 30, max: 15 },
-        timeout: 10000,
-      });
-      if (res.data?.stations?.length > 0) {
-        fetched = res.data.stations;
-      }
-    } catch (err) {
-      console.warn('[useEVSystem] fetchStations backend call failed:', err.message);
-    } finally {
-      setStationsLoading(false);
+      realOriginal = await fetchRealStationsFromOCM(lat, lon, 40, 3500);
+    } catch (e) {}
+
+    // 2. Fetch real original stations from OpenStreetMap Overpass API if needed
+    if (realOriginal.length === 0) {
+      try {
+        realOriginal = await fetchRealStationsFromOSM(lat, lon, 35, 3000);
+      } catch (e) {}
     }
 
-    if (fetched.length === 0) {
-      fetched = await fetchRealStationsFromOSM(lat, lon, 30);
+    // 3. Fetch real original stations from Backend API
+    if (realOriginal.length === 0) {
+      try {
+        const res = await axios.get(`${API_BASE}/stations`, {
+          params: { lat, lon, radius: 40, max: 15 },
+          timeout: 3000,
+        });
+        if (res.data?.stations?.length > 0) {
+          realOriginal = res.data.stations;
+        }
+      } catch (e) {}
     }
-    if (fetched.length === 0) {
-      fetched = generateNearbyStations(lat, lon, 8);
+
+    setStationsLoading(false);
+
+    // Show ONLY original real stations
+    if (realOriginal.length > 0) {
+      setStations(deduplicateStations(realOriginal));
+    } else {
+      // Fallback only if no original stations could be reached
+      setStations(generateNearbyStations(lat, lon, 8, locationName));
     }
-    setStations(fetched);
   }, []);
 
 

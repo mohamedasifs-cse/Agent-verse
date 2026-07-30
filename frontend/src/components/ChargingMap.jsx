@@ -255,29 +255,7 @@ export default function ChargingMap({
       {/* Map Canvas Container (isolated stacking context so Leaflet never overlaps sticky header) */}
       <div style={{ width: '100%', height: 480, position: 'relative', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', isolation: 'isolate', zIndex: 1 }}>
 
-        {/* Floating Start to Drive Quick Action on Map */}
-        {onToggleDrive && (
-          <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 1001 }}>
-            <button
-              onClick={onToggleDrive}
-              style={{
-                background: isDriving ? 'rgba(255, 80, 80, 0.94)' : 'rgba(0, 240, 255, 0.94)',
-                color: '#080805', border: 'none',
-                borderRadius: 20, padding: '8px 16px',
-                fontWeight: 900, fontSize: 12,
-                cursor: 'pointer',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.6), 0 0 15px rgba(0,240,255,0.3)',
-                backdropFilter: 'blur(8px)',
-                display: 'flex', alignItems: 'center', gap: 6,
-                transition: 'transform 0.15s ease',
-              }}
-              onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
-              onMouseLeave={e => e.currentTarget.style.transform = 'scale(1.0)'}
-            >
-              {isDriving ? '⏸️ PARK VEHICLE' : '🚗 START YOUR DRIVE'}
-            </button>
-          </div>
-        )}
+
 
         {/* Vehicle loading overlay */}
         {loadingRoute && (

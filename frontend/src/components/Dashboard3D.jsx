@@ -62,7 +62,8 @@ function SocArc({ soc }) {
   );
 }
 
-// ── Speedometer Gauge Component ────────────────────────────────────────────────
+// ── Speedometer Gauge Component (reserved for future use) ────────────────────
+// eslint-disable-next-line no-unused-vars
 function SpeedometerGauge({ speedKmh = 0, mode = 'idle', soc = 80 }) {
   const isDriving = mode === 'driving';
   const speed = Math.min(220, Math.max(0, speedKmh));
@@ -338,13 +339,13 @@ function VehicleImageView({ soc, mode, speedKmh = 0, vehicleName = 'Porsche Tayc
         />
       )}
 
-      {/* Dynamic Animated Vehicle Image (Breathing/Road Vibration) */}
+      {/* Vehicle Image — smooth subtle hover, no shake */}
       <motion.img
         src={imageSrc}
         alt={vehicleName}
-        animate={isDriving ? { y: [-2, 2, -2] } : { y: [0, -6, 0] }}
-        transition={{ repeat: Infinity, duration: isDriving ? 0.3 : 3, ease: 'easeInOut' }}
-        whileHover={{ scale: 1.05, rotateZ: 0.5 }}
+        animate={{ y: [0, -5, 0] }}
+        transition={{ repeat: Infinity, duration: isDriving ? 2 : 3.5, ease: 'easeInOut' }}
+        whileHover={{ scale: 1.04 }}
         style={{
           width: '100%',
           height: '100%',

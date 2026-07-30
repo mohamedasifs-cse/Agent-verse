@@ -11,22 +11,81 @@ OVERPASS_BASE = "https://overpass-api.de/api/interpreter"
 async def fetch_nearby_stations(
     lat: float,
     lon: float,
-    radius_km: float = 30.0,
+    radius_km: float = 40.0,
     max_results: int = 15
 ) -> List[Dict[str, Any]]:
     """
-    Fetch real charging stations dynamically for ANY lat, lon using OpenStreetMap Overpass API & OpenChargeMap.
-    Returns real EV charging station names, real GPS coordinates, pricing, power rating, and availability.
+    Fetch real original charging stations dynamically for ANY lat, lon using OpenChargeMap API & OpenStreetMap.
     """
     headers = {"User-Agent": "EV-Agent-Verse/2.0 (contact@evagent.org)"}
 
-    # ── 1. Try OpenStreetMap Overpass API (Real Global Live EV Charging Stations) ──
+    # ── 1. Try OpenChargeMap API (Official Real Global EV Charging Stations) ──
+    api_key = os.getenv("OCM_API_KEY", "6c578d88-0d5d-450e-a4c9-efda12aeb6a3").strip()
+    if api_key:
+        params = {
+            "key": api_key,
+            "latitude": lat,
+            "longitude": lon,
+            "distance": radius_km,
+            "distanceunit": "km",
+            "maxresults": max_results,
+            "compact": "true",
+            "verbose": "false",
+            "output": "json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.get(OCM_BASE, params=params, headers=headers)
+                if res.status_code == 200:
+                    data = res.json()
+                    ocm_results = []
+                    for station in data:
+                        addr_info = station.get("AddressInfo", {}) or {}
+                        s_lat = addr_info.get("Latitude", lat)
+                        s_lon = addr_info.get("Longitude", lon)
+                        dist = road_distance_km(lat, lon, s_lat, s_lon)
+
+                        total_bays = station.get("NumberOfPoints") or 4
+                        available_bays = max(1, total_bays - random.randint(0, max(0, total_bays - 1)))
+
+                        connections = station.get("Connections") or []
+                        max_power_kw = 50.0
+                        for c in connections:
+                            if isinstance(c, dict) and c.get("PowerKW"):
+                                max_power_kw = max(max_power_kw, float(c["PowerKW"]))
+
+                        title = addr_info.get("Title") or addr_info.get("AddressLine1") or f"EV Station #{station.get('ID')}"
+
+                        ocm_results.append({
+                            "id": f"ocm-{station.get('ID')}",
+                            "name": title,
+                            "address": addr_info.get("AddressLine1") or addr_info.get("Town") or f"Near location ({round(dist, 1)} km away)",
+                            "lat": s_lat,
+                            "lon": s_lon,
+                            "distance_km": round(dist, 2),
+                            "max_power_kw": max_power_kw,
+                            "total_bays": total_bays,
+                            "available_bays": available_bays,
+                            "queue_length": 0,
+                            "price_per_kwh": round(21.0 + (max_power_kw / 50.0) * 2.0, 1),
+                            "amenities": ["☕ Coffee", "Restroom", "WiFi"],
+                            "connector_types": ["CCS2 Fast Charger", "Type 2 AC"],
+                            "is_operational": True,
+                            "is_green": True,
+                        })
+                    if ocm_results:
+                        print(f"[ChargingStationFetcher] Loaded {len(ocm_results)} REAL stations from OpenChargeMap near ({lat}, {lon})")
+                        return ocm_results[:max_results]
+        except Exception as err:
+            print(f"[ChargingStationFetcher] OpenChargeMap error: {err}")
+
+    # ── 2. Try OpenStreetMap Overpass API (Real Global Live EV Charging Stations) ──
     try:
         radius_m = int(radius_km * 1000)
-        query = f'[out:json][timeout:15];node["amenity"="charging_station"](around:{radius_m}, {lat}, {lon});out body {max_results};'
+        query = f'[out:json][timeout:8];node["amenity"="charging_station"](around:{radius_m}, {lat}, {lon});out body {max_results};'
         url = f"{OVERPASS_BASE}?data={query}"
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=8.0) as client:
             res = await client.get(url, headers=headers)
             if res.status_code == 200:
                 elements = res.json().get("elements", [])
@@ -38,7 +97,6 @@ async def fetch_nearby_stations(
                     if not s_lat or not s_lon:
                         continue
 
-                    # Extract real station name or operator brand
                     raw_name = tags.get("name") or tags.get("brand") or tags.get("operator")
                     if not raw_name:
                         brand_tag = tags.get("brand:en") or tags.get("operator:en")
@@ -46,7 +104,6 @@ async def fetch_nearby_stations(
 
                     dist = road_distance_km(lat, lon, s_lat, s_lon)
 
-                    # Extract power rating in kW
                     max_power = 120.0
                     capacity = tags.get("capacity") or tags.get("socket:type2:output") or tags.get("socket:ccs:output")
                     if capacity:
@@ -82,63 +139,6 @@ async def fetch_nearby_stations(
                     return results[:max_results]
     except Exception as err:
         print(f"[ChargingStationFetcher] OSM Overpass error: {err}")
-
-    # ── 2. Try OpenChargeMap API if OCM_API_KEY is available ──
-    api_key = os.getenv("OCM_API_KEY", "").strip()
-    if api_key:
-        params = {
-            "key": api_key,
-            "latitude": lat,
-            "longitude": lon,
-            "distance": radius_km,
-            "distanceunit": "km",
-            "maxresults": max_results,
-            "compact": "true",
-            "verbose": "false",
-            "output": "json",
-        }
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                res = await client.get(OCM_BASE, params=params, headers=headers)
-                if res.status_code == 200:
-                    data = res.json()
-                    ocm_results = []
-                    for station in data:
-                        addr_info = station.get("AddressInfo", {}) or {}
-                        s_lat = addr_info.get("Latitude", lat)
-                        s_lon = addr_info.get("Longitude", lon)
-                        dist = road_distance_km(lat, lon, s_lat, s_lon)
-
-                        total_bays = station.get("NumberOfPoints") or 4
-                        available_bays = max(1, total_bays - random.randint(0, max(0, total_bays - 1)))
-
-                        connections = station.get("Connections") or []
-                        max_power_kw = 50.0
-                        for c in connections:
-                            if isinstance(c, dict) and c.get("PowerKW"):
-                                max_power_kw = max(max_power_kw, float(c["PowerKW"]))
-
-                        ocm_results.append({
-                            "id": f"ocm-{station.get('ID')}",
-                            "name": addr_info.get("Title") or "Real OpenChargeMap Station",
-                            "address": addr_info.get("AddressLine1") or "",
-                            "lat": s_lat,
-                            "lon": s_lon,
-                            "distance_km": round(dist, 2),
-                            "max_power_kw": max_power_kw,
-                            "total_bays": total_bays,
-                            "available_bays": available_bays,
-                            "queue_length": 0,
-                            "price_per_kwh": round(21.0 + random.random() * 4.0, 1),
-                            "amenities": ["☕ Coffee", "Restroom", "WiFi"],
-                            "connector_types": ["CCS2 Fast Charger", "Type 2 AC"],
-                            "is_operational": True,
-                            "is_green": True,
-                        })
-                    if ocm_results:
-                        return ocm_results[:max_results]
-        except Exception as err:
-            print(f"[ChargingStationFetcher] OpenChargeMap error: {err}")
 
     # ── 3. Dynamic Location Generator (Generates realistic real-world regional brand stations relative to lat, lon) ──
     fallback_brands = [
