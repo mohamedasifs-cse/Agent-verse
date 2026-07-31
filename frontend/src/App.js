@@ -14,6 +14,7 @@ import V2VTransferPanel from './components/V2VTransferPanel';
 import VehicleHealthAndEstimatorPanel from './components/VehicleHealthAndEstimatorPanel';
 import TripRoadmapAndBatteryPanel from './components/TripRoadmapAndBatteryPanel';
 import DriverSafetyAgentPanel from './components/DriverSafetyAgentPanel';
+import AntiGravityMode, { AntiGravityButton } from './components/AntiGravityMode';
 import { useEVSystem } from './hooks/useEVSystem';
 import { useVoiceAssistant } from './hooks/useVoiceAssistant';
 import { geocode, reverseGeocode } from './utils/geocoder';
@@ -276,6 +277,7 @@ export default function App() {
 
   // ── Driving Simulation State ──
   const [isDriving, setIsDriving] = useState(false);
+  const [isAntiGravity, setIsAntiGravity] = useState(false);
   const [routePoints, setRoutePoints] = useState([]);
   const [currentRouteIndex, setCurrentRouteIndex] = useState(0);
   const [vehiclePos, setVehiclePos] = useState(null);
@@ -285,6 +287,15 @@ export default function App() {
   const [simMultiplier, setSimMultiplier] = useState(1);
   const [simTraveledKm, setSimTraveledKm] = useState(0);
   const [totalRouteDistanceKm, setTotalRouteDistanceKm] = useState(0);
+
+  // Real-Time Ultra-Fast Charging Boost simulation when Boost Mode is active
+  useEffect(() => {
+    if (!isAntiGravity) return;
+    const interval = setInterval(() => {
+      setSimSoc((prevSoc) => Math.min(100, +(prevSoc + 1.5).toFixed(2)));
+    }, 1200);
+    return () => clearInterval(interval);
+  }, [isAntiGravity]);
 
   // Synchronize origin with vehiclePos if not driving
   useEffect(() => {
@@ -777,9 +788,26 @@ export default function App() {
                       ))}
                     </div>
                     <div style={{ height: 440 }}>
-                      <Dashboard3D telemetry={activeTelemetry} activeAgents={activeAgentIds} agentResults={analysisResult?.agents} view={view3D} vehicleName={currentVehicleConfig.name} vehicleType={currentVehicleConfig.type} />
+                      <Dashboard3D
+                        telemetry={activeTelemetry}
+                        activeAgents={activeAgentIds}
+                        agentResults={analysisResult?.agents}
+                        view={view3D}
+                        vehicleName={currentVehicleConfig.name}
+                        vehicleType={currentVehicleConfig.type}
+                        isAntiGravity={isAntiGravity}
+                      />
                     </div>
                   </DarkCard>
+
+                  {/* Anti-Gravity Active Metrics Panel */}
+                  <AntiGravityMode
+                    isActive={isAntiGravity}
+                    onToggle={() => setIsAntiGravity(!isAntiGravity)}
+                    isCharging={activeTelemetry.mode === 'charging'}
+                    soc={activeTelemetry.soc}
+                    baseRangeKm={currentVehicleConfig.maxRange}
+                  />
 
                   {/* Trip Driving Controls (Directly below vehicle display) */}
                   <DarkCard accent={isDriving}>
@@ -802,7 +830,7 @@ export default function App() {
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                         <button
                           onClick={() => {
                             if (isDriving) {
@@ -827,6 +855,13 @@ export default function App() {
                         >
                           {isDriving ? (currentVehicleConfig.type === 'bike' ? '⏸️ PARK SCOOTER' : '⏸️ PARK VEHICLE') : (currentVehicleConfig.type === 'bike' ? '🏍 START YOUR RIDE' : '🚗 START YOUR DRIVE')}
                         </button>
+
+                        {/* Futuristic Anti-Gravity Activate Button (Positioned below vehicle image) */}
+                        <AntiGravityButton
+                          isActive={isAntiGravity}
+                          onToggle={() => setIsAntiGravity(!isAntiGravity)}
+                          isDisabled={activeTelemetry.mode === 'charging'}
+                        />
 
                         <button
                           onClick={() => {

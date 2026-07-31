@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import BikeDigitalTwin3D from './BikeDigitalTwin3D';
 import { getVehicleConfig } from '../utils/vehicleConfig';
+import { EnergyRingEffect, AntiGravityParticles } from './AntiGravityMode';
 
 // ── Status overlay badge ───────────────────────────────────────────────────────
 function StatusBadge({ mode, soc }) {
@@ -216,17 +217,12 @@ function SpeedometerGauge({ speedKmh = 0, mode = 'idle', soc = 80 }) {
           </span>
         ))}
       </div>
-
-      {/* Vehicle State Status */}
-      <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700, color: isDriving ? '#22c55e' : 'var(--text-secondary)' }}>
-        {isDriving ? '🚗 VEHICLE IN MOTION — LIVE TELEMETRY SIMULATION' : '🅿️ VEHICLE PARKED'}
-      </div>
     </div>
   );
 }
 
 // ── Executive Vehicle Display View (Clean, Premium, Static with Holographic Accents) ─────────
-function VehicleImageView({ soc, mode, speedKmh = 0, vehicleName = 'Porsche Taycan EV' }) {
+function VehicleImageView({ soc, mode, speedKmh = 0, vehicleName = 'Porsche Taycan EV', isAntiGravity = false }) {
   const isCharging = mode === 'charging';
   const isDriving = mode === 'driving';
   const isCritical = soc < 15;
@@ -247,21 +243,50 @@ function VehicleImageView({ soc, mode, speedKmh = 0, vehicleName = 'Porsche Tayc
       {/* Radial spotlight behind vehicle */}
       <div style={{
         position: 'absolute', inset: 0,
-        background: isDriving
-          ? 'radial-gradient(ellipse at 50% 60%, rgba(0,240,255,0.2) 0%, rgba(8,8,5,0.95) 75%)'
-          : 'radial-gradient(ellipse at 50% 60%, rgba(212,212,20,0.14) 0%, rgba(8,8,5,0.95) 75%)',
+        background: isAntiGravity
+          ? 'radial-gradient(ellipse at 50% 60%, rgba(0,240,255,0.35) 0%, rgba(212,212,20,0.15) 45%, rgba(8,8,5,0.95) 75%)'
+          : isDriving
+            ? 'radial-gradient(ellipse at 50% 60%, rgba(0,240,255,0.2) 0%, rgba(8,8,5,0.95) 75%)'
+            : 'radial-gradient(ellipse at 50% 60%, rgba(212,212,20,0.14) 0%, rgba(8,8,5,0.95) 75%)',
         pointerEvents: 'none',
       }} />
 
-      {/* Dynamic Moving Road Matrix Grid */}
+      {/* Dynamic Moving Road Matrix Grid — Blurred on Anti-Gravity */}
       <div style={{
         position: 'absolute', bottom: -20, width: '100%', height: '45%',
         background: 'radial-gradient(ellipse at 50% 50%, rgba(0,240,255,0.18) 0%, transparent 75%)',
         backgroundImage: 'linear-gradient(rgba(0,240,255,0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(0,240,255,0.15) 1px, transparent 1px)',
         backgroundSize: '28px 28px',
         transform: 'perspective(400px) rotateX(65deg)',
-        pointerEvents: 'none', opacity: 0.85,
+        pointerEvents: 'none',
+        opacity: isAntiGravity ? 0.3 : 0.85,
+        filter: isAntiGravity ? 'blur(6px)' : 'none',
+        transition: 'all 0.5s ease',
       }} />
+
+      {/* Anti-Gravity Floating Particles & Glowing Energy Ring */}
+      {isAntiGravity && (
+        <>
+          <AntiGravityParticles />
+          <EnergyRingEffect />
+        </>
+      )}
+
+      {/* Soft Ground Contact Shadow — shrink & fade when lifted */}
+      <motion.div
+        style={{
+          position: 'absolute', bottom: '7%', width: '70%', height: '14%',
+          borderRadius: '50%',
+          background: 'rgba(0, 0, 0, 0.85)',
+          filter: isAntiGravity ? 'blur(16px)' : 'blur(10px)',
+          pointerEvents: 'none', zIndex: 2,
+        }}
+        animate={{
+          scale: isAntiGravity ? [0.45, 0.55, 0.45] : [0.95, 1.02, 0.95],
+          opacity: isAntiGravity ? [0.15, 0.3, 0.15] : [0.6, 0.8, 0.6],
+        }}
+        transition={{ repeat: Infinity, duration: isAntiGravity ? 2.5 : 2, ease: 'easeInOut' }}
+      />
 
       {/* Dynamic Animated Ground Speed Trail Lines when driving */}
       {isDriving && (
@@ -283,28 +308,32 @@ function VehicleImageView({ soc, mode, speedKmh = 0, vehicleName = 'Porsche Tayc
         style={{
           position: 'absolute', bottom: '8%', width: '82%', height: '28%',
           borderRadius: '50%',
-          background: isCritical
-            ? 'radial-gradient(ellipse at 50% 50%, rgba(255,80,80,0.55) 0%, transparent 70%)'
-            : isCharging
-              ? 'radial-gradient(ellipse at 50% 50%, rgba(212,212,20,0.55) 0%, transparent 70%)'
-              : 'radial-gradient(ellipse at 50% 50%, rgba(0,240,255,0.45) 0%, transparent 70%)',
-          filter: 'blur(18px)',
+          background: isAntiGravity
+            ? 'radial-gradient(ellipse at 50% 50%, rgba(0,240,255,0.7) 0%, rgba(212,212,20,0.4) 50%, transparent 75%)'
+            : isCritical
+              ? 'radial-gradient(ellipse at 50% 50%, rgba(255,80,80,0.55) 0%, transparent 70%)'
+              : isCharging
+                ? 'radial-gradient(ellipse at 50% 50%, rgba(212,212,20,0.55) 0%, transparent 70%)'
+                : 'radial-gradient(ellipse at 50% 50%, rgba(0,240,255,0.45) 0%, transparent 70%)',
+          filter: isAntiGravity ? 'blur(24px)' : 'blur(18px)',
           pointerEvents: 'none', zIndex: 2,
         }}
-        animate={{ opacity: [0.6, 1, 0.6], scale: [0.95, 1.05, 0.95] }}
-        transition={{ repeat: Infinity, duration: isDriving ? 0.8 : 2, ease: 'easeInOut' }}
+        animate={{ opacity: isAntiGravity ? [0.8, 1, 0.8] : [0.6, 1, 0.6], scale: isAntiGravity ? [1, 1.1, 1] : [0.95, 1.05, 0.95] }}
+        transition={{ repeat: Infinity, duration: isAntiGravity ? 1.5 : (isDriving ? 0.8 : 2), ease: 'easeInOut' }}
       />
 
       {/* Sci-Fi Holographic Scanning Laser Sweep Beam */}
       <motion.div
         style={{
           position: 'absolute', left: 0, right: 0, height: 3,
-          background: 'linear-gradient(90deg, transparent 5%, #00f0ff 50%, transparent 95%)',
-          boxShadow: '0 0 15px #00f0ff, 0 0 30px #00f0ff',
-          pointerEvents: 'none', zIndex: 5, opacity: 0.75,
+          background: isAntiGravity
+            ? 'linear-gradient(90deg, transparent 5%, #00f0ff 30%, #d4d414 50%, #00f0ff 70%, transparent 95%)'
+            : 'linear-gradient(90deg, transparent 5%, #00f0ff 50%, transparent 95%)',
+          boxShadow: isAntiGravity ? '0 0 25px #00f0ff, 0 0 45px #d4d414' : '0 0 15px #00f0ff, 0 0 30px #00f0ff',
+          pointerEvents: 'none', zIndex: 5, opacity: 0.85,
         }}
         animate={{ top: ['15%', '85%', '15%'] }}
-        transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut' }}
+        transition={{ repeat: Infinity, duration: isAntiGravity ? 2.5 : 4, ease: 'easeInOut' }}
       />
 
       {/* Driving Hyper-Drive Speed Streamer Rays */}
@@ -347,13 +376,31 @@ function VehicleImageView({ soc, mode, speedKmh = 0, vehicleName = 'Porsche Tayc
         />
       )}
 
-      {/* Vehicle Image — smooth subtle hover, no shake */}
+      {/* Real-Time Charging Boost Active Top Banner */}
+      {isAntiGravity && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 10,
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '6px 18px', background: 'rgba(212, 212, 20, 0.25)',
+            border: '1px solid #d4d414', borderRadius: 20, backdropFilter: 'blur(12px)',
+            boxShadow: '0 0 20px rgba(212, 212, 20, 0.6)',
+            color: '#d4d414', fontSize: 12, fontWeight: 900, fontFamily: 'var(--font-heading)',
+          }}
+        >
+          <span style={{ fontSize: 14 }}>⚡</span> REAL-TIME CHARGING BOOST ACTIVE (+350 kW)
+        </motion.div>
+      )}
+
+      {/* Vehicle Image — Lifts 25-30px when Anti-Gravity active with smooth hover bobbing */}
       <motion.img
         src={imgSrc}
         onError={() => setImgSrc(vConfig.fallbackImage || '/ev_car.png')}
         alt={vehicleName}
-        animate={{ y: [0, -5, 0] }}
-        transition={{ repeat: Infinity, duration: isDriving ? 2 : 3.5, ease: 'easeInOut' }}
+        animate={isAntiGravity ? { y: [-24, -32, -24] } : { y: [0, -5, 0] }}
+        transition={{ repeat: Infinity, duration: isAntiGravity ? 2.5 : (isDriving ? 2 : 3.5), ease: 'easeInOut' }}
         whileHover={{ scale: 1.04 }}
         style={{
           width: '100%',
@@ -361,19 +408,19 @@ function VehicleImageView({ soc, mode, speedKmh = 0, vehicleName = 'Porsche Tayc
           objectFit: 'cover',
           objectPosition: 'center center',
           scale: isDriving ? '1.06' : '1.02',
-          filter: isCritical
-            ? 'brightness(0.85) sepia(0.3) hue-rotate(-10deg) drop-shadow(0 15px 25px rgba(255,80,80,0.5))'
-            : isCharging
-              ? 'brightness(1.08) contrast(1.05) drop-shadow(0 15px 25px rgba(212,212,20,0.5))'
-              : isDriving
-                ? 'brightness(1.12) contrast(1.1) drop-shadow(0 18px 30px rgba(0,240,255,0.55))'
-                : 'brightness(1.04) drop-shadow(0 15px 25px rgba(0,0,0,0.85))',
+          filter: isAntiGravity
+            ? 'brightness(1.15) contrast(1.1) drop-shadow(0 25px 35px rgba(0,240,255,0.75)) drop-shadow(0 0 15px rgba(212,212,20,0.5))'
+            : isCritical
+              ? 'brightness(0.85) sepia(0.3) hue-rotate(-10deg) drop-shadow(0 15px 25px rgba(255,80,80,0.5))'
+              : isCharging
+                ? 'brightness(1.08) contrast(1.05) drop-shadow(0 15px 25px rgba(212,212,20,0.5))'
+                : isDriving
+                  ? 'brightness(1.12) contrast(1.1) drop-shadow(0 18px 30px rgba(0,240,255,0.55))'
+                  : 'brightness(1.04) drop-shadow(0 15px 25px rgba(0,0,0,0.85))',
           zIndex: 4,
           transition: 'filter 0.4s ease',
         }}
       />
-
-
 
       {/* Vignette border framing */}
       <div style={{
@@ -588,13 +635,14 @@ function BatteryGaugeView({ telemetry, vehicleType = 'car', vehicleName = '' }) 
   );
 }
 
-// ── Live 11-Agent Intelligence Hub Viewer ──────────────────────────────────────
+// ── Live 12-Agent Intelligence Hub Viewer ──────────────────────────────────────
 function AgentHubView({ agentResults }) {
   const allAgentsMeta = [
     { key: 'battery', title: 'Battery Intelligence', icon: '🔋', color: '#22c55e', role: 'SoC & Health Monitoring' },
     { key: 'route', title: 'Route Intelligence', icon: '🗺️', color: '#00f0ff', role: 'GPS Polyline & ETA' },
     { key: 'charging', title: 'Charging Intelligence', icon: '⚡', color: '#d4d414', role: 'Optimal Station Recommendation' },
     { key: 'emergency', title: 'Emergency Assistance', icon: '🚨', color: '#ff5050', role: 'Critical Diagnostics & Safety' },
+    { key: 'antigravity', title: 'Anti-Gravity Agent', icon: '🚀', color: '#00f0ff', role: 'Magnetic Levitation Simulation' },
     { key: 'energy', title: 'Energy & Sustainability', icon: '🌱', color: '#22c55e', role: 'Carbon Footprint & Eco Score' },
     { key: 'pricing', title: 'Pricing & Cost', icon: '💰', color: '#f59e0b', role: 'Tariff & Cost Savings' },
     { key: 'analytics', title: 'Analytics & Reports', icon: '📊', color: '#60a5fa', role: 'Performance Metrics' },
@@ -614,13 +662,13 @@ function AgentHubView({ agentResults }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.1em' }}>
-            11 SPECIALIZED DOMAIN AI AGENTS
+            12 SPECIALIZED DOMAIN AI AGENTS
           </div>
           <div style={{ fontFamily: 'var(--font-heading)', fontSize: 16, fontWeight: 800, color: '#fff' }}>
             Multi-Agent Intelligence Network Hub
           </div>
         </div>
-        <span className="rydex-badge accent" style={{ fontSize: 10 }}>11 Active Agents</span>
+        <span className="rydex-badge accent" style={{ fontSize: 10 }}>12 Active Agents</span>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
@@ -666,7 +714,7 @@ function AgentHubView({ agentResults }) {
 /**
  * Dashboard Viewer — Full Sized EV Car view / Bike Digital Twin view + 2D Battery Capacity Gauge
  */
-export default function Dashboard3D({ telemetry, activeAgents, agentResults, view = 'vehicle', vehicleName = 'Porsche Taycan EV', vehicleType = 'car' }) {
+export default function Dashboard3D({ telemetry, activeAgents, agentResults, view = 'vehicle', vehicleName = 'Porsche Taycan EV', vehicleType = 'car', isAntiGravity = false }) {
   const soc = telemetry?.soc ?? 80;
   const mode = telemetry?.mode ?? 'idle';
   const speedKmh = telemetry?.speedKmh ?? 0;
@@ -689,7 +737,7 @@ export default function Dashboard3D({ telemetry, activeAgents, agentResults, vie
             {isBike ? (
               <BikeDigitalTwin3D telemetry={telemetry} vehicleName={vehicleName} speedKmh={speedKmh} mode={mode} />
             ) : (
-              <VehicleImageView soc={soc} mode={mode} speedKmh={speedKmh} vehicleName={vehicleName} />
+              <VehicleImageView soc={soc} mode={mode} speedKmh={speedKmh} vehicleName={vehicleName} isAntiGravity={isAntiGravity} />
             )}
           </motion.div>
         )}

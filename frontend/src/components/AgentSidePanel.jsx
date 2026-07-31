@@ -58,6 +58,11 @@ const ALL_AGENTS_VEHICLE_META = [
     descLine2: 'Manages Vehicle-to-Grid (V2G) energy export back to the grid during high-demand tariff hours.',
   },
   {
+    key: 'antigravity', title: 'Anti-Gravity Agent', category: 'Powertrain', icon: '🚀', color: '#00f0ff', role: 'Magnetic Levitation Simulation',
+    descLine1: 'Experimental AI simulation that visualizes anti-gravity vehicle mode for future mobility.',
+    descLine2: 'Controls magnetic levitation field, hover height stabilization (0.5m), and chassis anti-gravity thrust.',
+  },
+  {
     key: 'maintenance', title: 'Predictive Maintenance', category: 'Hardware', icon: '🔧', color: '#f97316', role: 'Brakes, Tires & Inverter',
     descLine1: 'Inspects tire tread wear %, brake pad thickness, inverter thermals, and motor vibration.',
     descLine2: 'Forecasts component degradation to schedule preventive servicing before hardware failure.',
@@ -69,7 +74,7 @@ export default function AgentSidePanel({ isOpen, onClose, agentResults, isAnalyz
 
   const filteredAgents = ALL_AGENTS_VEHICLE_META.filter(agent => {
     if (activeFilter === 'All') return true;
-    if (activeFilter === 'Powertrain') return ['battery', 'charging', 'v2v', 'energy', 'grid'].includes(agent.key);
+    if (activeFilter === 'Powertrain') return ['battery', 'charging', 'v2v', 'energy', 'grid', 'antigravity'].includes(agent.key);
     if (activeFilter === 'Safety') return ['emergency', 'driver'].includes(agent.key);
     if (activeFilter === 'Hardware') return ['maintenance', 'weather'].includes(agent.key);
     return true;

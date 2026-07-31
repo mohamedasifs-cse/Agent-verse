@@ -16,7 +16,6 @@ const BIKE_PRESETS = [
   'TVS iQube',
   'Bajaj Chetak',
   'Hero Vida V1',
-  'Simple One',
 ];
 
 export default function VehicleLogin({ onLogin }) {
@@ -154,7 +153,7 @@ export default function VehicleLogin({ onLogin }) {
               ⚡ Vehicle Type
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              
+
               {/* Electric Car Option */}
               <motion.div
                 whileHover={{ scale: 1.02 }}
@@ -176,9 +175,9 @@ export default function VehicleLogin({ onLogin }) {
                 <div style={{ fontFamily: 'var(--font-heading)', fontSize: 14, fontWeight: 800, color: vehicleType === 'car' ? 'var(--accent)' : '#fff' }}>
                   Electric Car
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.3 }}>
+                {/* <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.3 }}>
                   Four-wheel EV with advanced telemetry and AI monitoring.
-                </div>
+                </div> */}
                 {vehicleType === 'car' && (
                   <div style={{ position: 'absolute', top: 10, right: 10, fontSize: 12, color: 'var(--accent)' }}>✓</div>
                 )}
@@ -205,9 +204,9 @@ export default function VehicleLogin({ onLogin }) {
                 <div style={{ fontFamily: 'var(--font-heading)', fontSize: 14, fontWeight: 800, color: vehicleType === 'bike' ? 'var(--accent)' : '#fff' }}>
                   Electric Bike / Scooter
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.3 }}>
+                {/* <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.3 }}>
                   Two-wheel EV with smart battery, navigation, charging and safety monitoring.
-                </div>
+                </div> */}
                 {vehicleType === 'bike' && (
                   <div style={{ position: 'absolute', top: 10, right: 10, fontSize: 12, color: 'var(--accent)' }}>✓</div>
                 )}
@@ -215,7 +214,7 @@ export default function VehicleLogin({ onLogin }) {
 
             </div>
           </div>
-          
+
           {/* Vehicle Name Field */}
           <div>
             <label style={{
