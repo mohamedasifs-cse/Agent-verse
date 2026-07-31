@@ -48,12 +48,14 @@ Recommend the best station considering distance, power, availability, and cost."
             best_score = score
             best_by_score = s
 
+    v_type = battery_state.get("vehicleType", "car")
+    cap_kwh = battery_state.get("capacityKwh", 4.0 if v_type == "bike" else 75.0)
     soc = battery_state.get("soc", 50)
     soh = battery_state.get("soh", 95)
     soc_needed = max(0.0, 80.0 - soc)
-    energy_needed_kwh = (soc_needed / 100.0) * 75.0 * (soh / 100.0)
+    energy_needed_kwh = (soc_needed / 100.0) * cap_kwh * (soh / 100.0)
     max_kw = best_by_score.get("max_power_kw", 50.0)
-    charge_duration_min = round((energy_needed_kwh / max_kw) * 60.0) if max_kw else 45
+    charge_duration_min = round((energy_needed_kwh / max_kw) * 60.0) if max_kw else (120 if v_type == "bike" else 45)
 
     fallback = {
         "recommended_station": {

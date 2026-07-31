@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { getVehicleConfig } from '../utils/vehicleConfig';
 
 /**
  * TripRoadmapAndBatteryPanel
@@ -10,40 +11,44 @@ export default function TripRoadmapAndBatteryPanel({ telemetry, routeKm = 0, ori
 
   const isDriving = (telemetry?.speedKmh || 0) > 0 || telemetry?.isDriving;
   const currentSoc = telemetry?.soc != null ? +telemetry.soc.toFixed(1) : 80;
+
+  // Retrieve current vehicle specs from telemetry / config
+  const vehicleName = telemetry?.vehicleModel || telemetry?.vehicleName || 'Porsche Taycan EV';
+  const vehicleType = telemetry?.vehicleType || 'car';
+  const vConfig = getVehicleConfig(vehicleName, vehicleType);
+  const maxFullRangeKm = vConfig.maxRange || 450;
+  const batteryCapacityKwh = vConfig.batteryCapacity || 80;
   
-  // Live dynamic remaining distance
+  // Live dynamic remaining distance & driven distance
   const initialDistKm = routeKm > 0 ? routeKm : 165.8;
   const liveRemainingKm = telemetry?.remainingKm > 0 ? +telemetry.remainingKm.toFixed(1) : initialDistKm;
   const distanceDrivenKm = telemetry?.traveledKm != null ? +telemetry.traveledKm.toFixed(1) : Math.max(0, +(initialDistKm - liveRemainingKm).toFixed(1));
 
-  const evEfficiencyKwhPer100 = 16; // 16 kWh/100km
+  // Overall & Dynamic Battery Power Needed Calculations derived from vehicle specs
+  const overallTripSocNeeded = Math.round((initialDistKm / maxFullRangeKm) * 100);
+  const initialEnergyNeededKwh = +((overallTripSocNeeded / 100) * batteryCapacityKwh).toFixed(1);
 
-  // Overall & Dynamic Battery Power Needed Calculations
-  const initialEnergyNeededKwh = +((initialDistKm * evEfficiencyKwhPer100) / 100).toFixed(1);
-  const overallTripSocNeeded = Math.round((initialEnergyNeededKwh / 80) * 100);
+  const liveSocRequiredPct = Math.round((liveRemainingKm / maxFullRangeKm) * 100);
+  const liveEnergyNeededKwh = +((liveSocRequiredPct / 100) * batteryCapacityKwh).toFixed(1);
 
-  const liveEnergyNeededKwh = +((liveRemainingKm * evEfficiencyKwhPer100) / 100).toFixed(1);
-  const liveSocRequiredPct = Math.round((liveEnergyNeededKwh / 80) * 100); // 80 kWh pack capacity
+  // Predicted Arrival SoC: Current battery SoC minus live SoC required to complete trip
+  const directArrivalSocPct = Math.max(0, Math.round(currentSoc - liveSocRequiredPct));
+  const isChargingNeeded = directArrivalSocPct < 15 || currentSoc < liveSocRequiredPct;
 
-  const directArrivalSocPct = Math.max(0, +(currentSoc - liveSocRequiredPct).toFixed(1));
-  const isChargingNeeded = directArrivalSocPct < 15 || overallTripSocNeeded > currentSoc;
-
-  // Predicted Arrival SoC WITH the recommended mid-trip DC fast charging stop (boost to 80%)
-  const distStopToDest = liveRemainingKm > 0 ? liveRemainingKm * 0.5 : initialDistKm * 0.5;
-  const postStopEnergyKwh = (distStopToDest * evEfficiencyKwhPer100) / 100;
-  const postStopSocDrop = Math.round((postStopEnergyKwh / 80) * 100);
+  // Predicted Arrival SoC WITH the recommended mid-trip charging stop
   const arrivalSocWithStopPct = isChargingNeeded
-    ? Math.max(15, Math.min(75, 80 - postStopSocDrop))
+    ? Math.min(80, Math.max(25, Math.round(currentSoc + 30 - (liveSocRequiredPct * 0.5))))
     : directArrivalSocPct;
 
   // Dynamic estimated driving time
-  const drivingHours = Math.floor(liveRemainingKm / 80);
-  const drivingMins = Math.round(((liveRemainingKm / 80) % 1) * 60);
+  const avgSpeed = vehicleType === 'bike' ? 45 : 80;
+  const drivingHours = Math.floor(liveRemainingKm / avgSpeed);
+  const drivingMins = Math.round(((liveRemainingKm / avgSpeed) % 1) * 60);
 
   // Best intermediate charging station recommendation
   const bestPitStop = stations.length > 0
-    ? stations[Math.floor(stations.length / 2)]
-    : { name: 'Tata Power Fast DC Hub', max_power_kw: 150, price_per_kwh: 18, distance_km: Math.round(initialDistKm * 0.5) };
+    ? (stations.find(st => st.name?.toLowerCase().includes(vehicleType === 'bike' ? 'ola' : 'tata') || st.name?.toLowerCase().includes('hub')) || stations[Math.floor(stations.length / 2)])
+    : { name: vehicleType === 'bike' ? 'Ola Hypercharger Swap Hub' : 'Tata Power Fast DC Hub', max_power_kw: vehicleType === 'bike' ? 30 : 150, price_per_kwh: 18, distance_km: Math.round(initialDistKm * 0.5) };
 
   return (
     <motion.div

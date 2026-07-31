@@ -2,16 +2,38 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import EVVehicleLoader from './EVVehicleLoader';
 
-const PRESET_VEHICLES = [
+const CAR_PRESETS = [
   'Porsche Taycan EV',
-  'TATA Safari EV',
+  'Tata Nexon EV',
+  'Tata Punch EV',
+  'Mahindra XUV400',
+  'MG ZS EV',
+];
+
+const BIKE_PRESETS = [
+  'Ola S1 Pro',
+  'Ather 450X',
+  'TVS iQube',
+  'Bajaj Chetak',
+  'Hero Vida V1',
+  'Simple One',
 ];
 
 export default function VehicleLogin({ onLogin }) {
+  const [vehicleType, setVehicleType] = useState('car'); // 'car' | 'bike'
   const [vehicleName, setVehicleName] = useState('Porsche Taycan EV');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  function handleTypeChange(type) {
+    setVehicleType(type);
+    if (type === 'car') {
+      setVehicleName('Porsche Taycan EV');
+    } else {
+      setVehicleName('Ola S1 Pro');
+    }
+  }
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -30,13 +52,18 @@ export default function VehicleLogin({ onLogin }) {
 
     setTimeout(() => {
       setIsLoading(false);
-      onLogin({
+      const sessionData = {
+        vehicleType,
+        vehicleModel: vehicleName.trim(),
         vehicleName: vehicleName.trim(),
         pin,
         loginTime: new Date().toISOString(),
-      });
+      };
+      onLogin(sessionData);
     }, 150);
   }
+
+  const presets = vehicleType === 'car' ? CAR_PRESETS : BIKE_PRESETS;
 
   return (
     <div style={{
@@ -78,7 +105,7 @@ export default function VehicleLogin({ onLogin }) {
         transition={{ duration: 0.4, ease: 'easeOut' }}
         style={{
           width: '100%',
-          maxWidth: 460,
+          maxWidth: 520,
           background: 'rgba(17, 17, 16, 0.92)',
           border: '1px solid rgba(212, 212, 20, 0.35)',
           borderRadius: 20,
@@ -90,7 +117,7 @@ export default function VehicleLogin({ onLogin }) {
         }}
       >
         {/* Top Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div style={{
             width: 56, height: 56,
             background: 'var(--accent)',
@@ -98,7 +125,7 @@ export default function VehicleLogin({ onLogin }) {
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 26, color: '#080805', fontWeight: 900,
             boxShadow: '0 0 24px rgba(212,212,20,0.5)',
-            marginBottom: 14,
+            marginBottom: 12,
           }}>
             ⚡
           </div>
@@ -110,12 +137,84 @@ export default function VehicleLogin({ onLogin }) {
             EV Multi-Agent OS
           </h2>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
-            Connect your EV vehicle to start AI fleet management
+            Connect your EV Car or Electric Scooter to start AI fleet management
           </p>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+          {/* Vehicle Type Selection Cards */}
+          <div>
+            <label style={{
+              display: 'block', fontSize: 11, fontWeight: 800,
+              letterSpacing: '0.08em', textTransform: 'uppercase',
+              color: 'var(--accent)', marginBottom: 10,
+            }}>
+              ⚡ Vehicle Type
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              
+              {/* Electric Car Option */}
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleTypeChange('car')}
+                style={{
+                  background: vehicleType === 'car' ? 'rgba(212, 212, 20, 0.12)' : 'rgba(30, 30, 27, 0.6)',
+                  border: `2px solid ${vehicleType === 'car' ? 'var(--accent)' : 'rgba(255, 255, 255, 0.08)'}`,
+                  borderRadius: 14,
+                  padding: '16px 14px',
+                  cursor: 'pointer',
+                  backdropFilter: 'blur(12px)',
+                  boxShadow: vehicleType === 'car' ? '0 0 20px rgba(212, 212, 20, 0.25)' : 'none',
+                  transition: 'all 0.25s ease',
+                  position: 'relative',
+                }}
+              >
+                <div style={{ fontSize: 24, marginBottom: 6 }}>🚗</div>
+                <div style={{ fontFamily: 'var(--font-heading)', fontSize: 14, fontWeight: 800, color: vehicleType === 'car' ? 'var(--accent)' : '#fff' }}>
+                  Electric Car
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.3 }}>
+                  Four-wheel EV with advanced telemetry and AI monitoring.
+                </div>
+                {vehicleType === 'car' && (
+                  <div style={{ position: 'absolute', top: 10, right: 10, fontSize: 12, color: 'var(--accent)' }}>✓</div>
+                )}
+              </motion.div>
+
+              {/* Electric Bike Option */}
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleTypeChange('bike')}
+                style={{
+                  background: vehicleType === 'bike' ? 'rgba(212, 212, 20, 0.12)' : 'rgba(30, 30, 27, 0.6)',
+                  border: `2px solid ${vehicleType === 'bike' ? 'var(--accent)' : 'rgba(255, 255, 255, 0.08)'}`,
+                  borderRadius: 14,
+                  padding: '16px 14px',
+                  cursor: 'pointer',
+                  backdropFilter: 'blur(12px)',
+                  boxShadow: vehicleType === 'bike' ? '0 0 20px rgba(212, 212, 20, 0.25)' : 'none',
+                  transition: 'all 0.25s ease',
+                  position: 'relative',
+                }}
+              >
+                <div style={{ fontSize: 24, marginBottom: 6 }}>🏍</div>
+                <div style={{ fontFamily: 'var(--font-heading)', fontSize: 14, fontWeight: 800, color: vehicleType === 'bike' ? 'var(--accent)' : '#fff' }}>
+                  Electric Bike / Scooter
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.3 }}>
+                  Two-wheel EV with smart battery, navigation, charging and safety monitoring.
+                </div>
+                {vehicleType === 'bike' && (
+                  <div style={{ position: 'absolute', top: 10, right: 10, fontSize: 12, color: 'var(--accent)' }}>✓</div>
+                )}
+              </motion.div>
+
+            </div>
+          </div>
           
           {/* Vehicle Name Field */}
           <div>
@@ -124,13 +223,13 @@ export default function VehicleLogin({ onLogin }) {
               letterSpacing: '0.08em', textTransform: 'uppercase',
               color: 'var(--accent)', marginBottom: 8,
             }}>
-              🚗 Vehicle Name
+              {vehicleType === 'car' ? '🚗' : '🏍'} Vehicle Model
             </label>
             <input
               type="text"
               value={vehicleName}
               onChange={e => setVehicleName(e.target.value)}
-              placeholder="e.g. Porsche Taycan EV"
+              placeholder={vehicleType === 'car' ? 'e.g. Porsche Taycan EV' : 'e.g. Ola S1 Pro'}
               className="rydex-input"
               style={{
                 fontSize: 14, padding: '12px 16px',
@@ -140,15 +239,15 @@ export default function VehicleLogin({ onLogin }) {
               }}
             />
 
-            {/* Presets */}
-            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-              {PRESET_VEHICLES.map(preset => (
+            {/* Dynamic Model Presets */}
+            <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+              {presets.map(preset => (
                 <button
                   type="button"
                   key={preset}
                   onClick={() => setVehicleName(preset)}
                   style={{
-                    fontSize: 10, fontWeight: 600, padding: '4px 8px', borderRadius: 6,
+                    fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8,
                     background: vehicleName === preset ? 'rgba(212,212,20,0.2)' : 'rgba(255,255,255,0.04)',
                     border: `1px solid ${vehicleName === preset ? 'var(--accent)' : 'var(--border-muted)'}`,
                     color: vehicleName === preset ? 'var(--accent)' : 'var(--text-secondary)',
@@ -221,16 +320,17 @@ export default function VehicleLogin({ onLogin }) {
               marginTop: 6,
             }}
           >
-            {isLoading ? <EVVehicleLoader label="Connecting…" compact={true} /> : 'CONNECT VEHICLE →'}
+            {isLoading ? <EVVehicleLoader label="Connecting…" compact={true} /> : `CONNECT ${vehicleType === 'bike' ? 'SCOOTER' : 'CAR'} →`}
           </motion.button>
 
         </form>
 
         {/* Footer info */}
         <div style={{ marginTop: 24, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
-          EV Multi-Agent Operating System v2.0 · Encrypted Telemetry Link
+          EV Multi-Agent Operating System v2.5 · Unified Smart Mobility Platform
         </div>
       </motion.div>
     </div>
   );
 }
+

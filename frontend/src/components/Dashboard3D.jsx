@@ -1,13 +1,16 @@
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import BikeDigitalTwin3D from './BikeDigitalTwin3D';
+import { getVehicleConfig } from '../utils/vehicleConfig';
 
 // ── Status overlay badge ───────────────────────────────────────────────────────
 function StatusBadge({ mode, soc }) {
   const color = soc < 15 ? '#ff5050' : soc < 30 ? '#f59e0b' : mode === 'charging' ? '#d4d414' : '#22c55e';
-  const label = soc < 15 ? '🚨 Critical Battery'
-    : soc < 30 ? '⚠️ Low Battery'
-    : mode === 'charging' ? '⚡ Charging'
-    : mode === 'driving' ? '🚗 Driving'
-    : '🅿️ Parked';
+  const label = soc < 15 ? ' Critical Battery'
+    : soc < 30 ? ' Low Battery'
+      : mode === 'charging' ? ' Charging'
+        : mode === 'driving' ? ' Driving'
+          : 'Parked';
 
   return (
     <div style={{
@@ -228,7 +231,12 @@ function VehicleImageView({ soc, mode, speedKmh = 0, vehicleName = 'Porsche Tayc
   const isDriving = mode === 'driving';
   const isCritical = soc < 15;
   const isTata = vehicleName.toLowerCase().includes('tata') || vehicleName.toLowerCase().includes('safari');
-  const imageSrc = isTata ? '/tata_safari_ev.png' : '/ev_car.png';
+  const vConfig = getVehicleConfig(vehicleName, 'car');
+  const [imgSrc, setImgSrc] = useState(vConfig.image || vConfig.fallbackImage);
+
+  useEffect(() => {
+    setImgSrc(vConfig.image || vConfig.fallbackImage);
+  }, [vehicleName, vConfig.image, vConfig.fallbackImage]);
 
   return (
     <div style={{
@@ -278,8 +286,8 @@ function VehicleImageView({ soc, mode, speedKmh = 0, vehicleName = 'Porsche Tayc
           background: isCritical
             ? 'radial-gradient(ellipse at 50% 50%, rgba(255,80,80,0.55) 0%, transparent 70%)'
             : isCharging
-            ? 'radial-gradient(ellipse at 50% 50%, rgba(212,212,20,0.55) 0%, transparent 70%)'
-            : 'radial-gradient(ellipse at 50% 50%, rgba(0,240,255,0.45) 0%, transparent 70%)',
+              ? 'radial-gradient(ellipse at 50% 50%, rgba(212,212,20,0.55) 0%, transparent 70%)'
+              : 'radial-gradient(ellipse at 50% 50%, rgba(0,240,255,0.45) 0%, transparent 70%)',
           filter: 'blur(18px)',
           pointerEvents: 'none', zIndex: 2,
         }}
@@ -341,7 +349,8 @@ function VehicleImageView({ soc, mode, speedKmh = 0, vehicleName = 'Porsche Tayc
 
       {/* Vehicle Image — smooth subtle hover, no shake */}
       <motion.img
-        src={imageSrc}
+        src={imgSrc}
+        onError={() => setImgSrc(vConfig.fallbackImage || '/ev_car.png')}
         alt={vehicleName}
         animate={{ y: [0, -5, 0] }}
         transition={{ repeat: Infinity, duration: isDriving ? 2 : 3.5, ease: 'easeInOut' }}
@@ -350,15 +359,15 @@ function VehicleImageView({ soc, mode, speedKmh = 0, vehicleName = 'Porsche Tayc
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          objectPosition: isTata ? 'center center' : 'center 40%',
+          objectPosition: 'center center',
           scale: isDriving ? '1.06' : '1.02',
           filter: isCritical
             ? 'brightness(0.85) sepia(0.3) hue-rotate(-10deg) drop-shadow(0 15px 25px rgba(255,80,80,0.5))'
             : isCharging
-            ? 'brightness(1.08) contrast(1.05) drop-shadow(0 15px 25px rgba(212,212,20,0.5))'
-            : isDriving
-            ? 'brightness(1.12) contrast(1.1) drop-shadow(0 18px 30px rgba(0,240,255,0.55))'
-            : 'brightness(1.04) drop-shadow(0 15px 25px rgba(0,0,0,0.85))',
+              ? 'brightness(1.08) contrast(1.05) drop-shadow(0 15px 25px rgba(212,212,20,0.5))'
+              : isDriving
+                ? 'brightness(1.12) contrast(1.1) drop-shadow(0 18px 30px rgba(0,240,255,0.55))'
+                : 'brightness(1.04) drop-shadow(0 15px 25px rgba(0,0,0,0.85))',
           zIndex: 4,
           transition: 'filter 0.4s ease',
         }}
@@ -412,13 +421,17 @@ function VehicleImageView({ soc, mode, speedKmh = 0, vehicleName = 'Porsche Tayc
 }
 
 // ── 2D Executive Battery Management & Capacity Gauge ──────────────────────────
-function BatteryGaugeView({ telemetry }) {
+function BatteryGaugeView({ telemetry, vehicleType = 'car', vehicleName = '' }) {
+  const isBike = (vehicleType === 'bike') || (telemetry?.vehicleType === 'bike');
+  const vName = vehicleName || telemetry?.vehicleModel || telemetry?.vehicleName || (isBike ? 'Ola S1 Pro' : 'Porsche Taycan EV');
+  const vConfig = getVehicleConfig(vName, isBike ? 'bike' : 'car');
+
   const soc = telemetry?.soc ?? 75;
   const soh = typeof telemetry?.soh === 'number' ? telemetry.soh.toFixed(1) : (telemetry?.soh ?? '95.0');
   const temp = telemetry?.temperatureC ?? 25;
 
-  const maxCapacityKwh = 90; // 90 kWh Max Capacity
-  const currentEnergyKwh = +((soc / 100) * maxCapacityKwh).toFixed(1);
+  const maxCapacityKwh = vConfig.batteryCapacity || (isBike ? 4.0 : 75.0);
+  const currentEnergyKwh = +((soc / 100) * maxCapacityKwh).toFixed(2);
   const color = soc < 15 ? '#ff5050' : soc < 30 ? '#f59e0b' : '#22c55e';
   const accentColor = 'var(--accent)';
 
@@ -446,10 +459,10 @@ function BatteryGaugeView({ telemetry }) {
             fontSize: 11, fontWeight: 700, letterSpacing: '0.1em',
             textTransform: 'uppercase', color: 'var(--accent)', marginBottom: 4,
           }}>
-            HIGH-VOLTAGE BATTERY ARCHITECTURE
+            {isBike ? 'SMART LITHIUM BATTERY ARCHITECTURE' : 'HIGH-VOLTAGE BATTERY ARCHITECTURE'}
           </div>
           <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: 22, fontWeight: 800, margin: 0 }}>
-            90.0 kWh Performance Pack
+            {maxCapacityKwh.toFixed(1)} kWh {isBike ? 'Removable Smart Pack' : 'Performance Pack'}
           </h3>
         </div>
         <div style={{
@@ -457,7 +470,7 @@ function BatteryGaugeView({ telemetry }) {
           background: 'rgba(212, 212, 20, 0.1)', border: '1px solid rgba(212, 212, 20, 0.3)',
           color: 'var(--accent)', fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-heading)',
         }}>
-          800V Nominal Architecture
+          {isBike ? '48V Smart BMS' : '800V Nominal Architecture'}
         </div>
       </div>
 
@@ -496,7 +509,7 @@ function BatteryGaugeView({ telemetry }) {
               {currentEnergyKwh} <span style={{ fontSize: '1.2rem', color: 'var(--text-primary)', fontWeight: 700 }}>kWh</span>
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, fontWeight: 600 }}>
-              out of <strong style={{ color: 'var(--text-primary)' }}>90.0 kWh</strong> Max Capacity
+              out of <strong style={{ color: 'var(--text-primary)' }}>{maxCapacityKwh.toFixed(1)} kWh</strong> Max Capacity
             </div>
           </div>
         </div>
@@ -512,7 +525,7 @@ function BatteryGaugeView({ telemetry }) {
               MAX CAPACITY
             </div>
             <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 16, color: 'var(--text-primary)', marginTop: 2 }}>
-              90.0 kWh
+              {maxCapacityKwh.toFixed(1)} kWh
             </div>
           </div>
 
@@ -539,7 +552,7 @@ function BatteryGaugeView({ telemetry }) {
               FAST CHARGE MAX
             </div>
             <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 16, color: 'var(--accent)', marginTop: 2 }}>
-              270 kW
+              {isBike ? '30 kW' : '270 kW'}
             </div>
           </div>
         </div>
@@ -651,12 +664,13 @@ function AgentHubView({ agentResults }) {
 }
 
 /**
- * Dashboard Viewer — Full Sized Porsche EV car view + 2D Battery Capacity Gauge
+ * Dashboard Viewer — Full Sized EV Car view / Bike Digital Twin view + 2D Battery Capacity Gauge
  */
-export default function Dashboard3D({ telemetry, activeAgents, agentResults, view = 'vehicle', vehicleName = 'Porsche Taycan EV' }) {
+export default function Dashboard3D({ telemetry, activeAgents, agentResults, view = 'vehicle', vehicleName = 'Porsche Taycan EV', vehicleType = 'car' }) {
   const soc = telemetry?.soc ?? 80;
   const mode = telemetry?.mode ?? 'idle';
   const speedKmh = telemetry?.speedKmh ?? 0;
+  const isBike = (vehicleType === 'bike') || (telemetry?.vehicleType === 'bike');
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -665,14 +679,18 @@ export default function Dashboard3D({ telemetry, activeAgents, agentResults, vie
         {/* ── Vehicle: Full-Sized Vehicle View ── */}
         {(view === 'vehicle' || view === 'speedometer') && (
           <motion.div
-            key="vehicle"
+            key={isBike ? "bike" : "vehicle"}
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
             transition={{ duration: 0.3 }}
             style={{ width: '100%', height: '100%' }}
           >
-            <VehicleImageView soc={soc} mode={mode} speedKmh={speedKmh} vehicleName={vehicleName} />
+            {isBike ? (
+              <BikeDigitalTwin3D telemetry={telemetry} vehicleName={vehicleName} speedKmh={speedKmh} mode={mode} />
+            ) : (
+              <VehicleImageView soc={soc} mode={mode} speedKmh={speedKmh} vehicleName={vehicleName} />
+            )}
           </motion.div>
         )}
 
@@ -686,7 +704,7 @@ export default function Dashboard3D({ telemetry, activeAgents, agentResults, vie
             transition={{ duration: 0.3 }}
             style={{ width: '100%', height: '100%' }}
           >
-            <BatteryGaugeView telemetry={telemetry} />
+            <BatteryGaugeView telemetry={telemetry} vehicleType={isBike ? 'bike' : 'car'} vehicleName={vehicleName} />
           </motion.div>
         )}
 

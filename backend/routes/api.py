@@ -114,17 +114,23 @@ async def create_charging_session(session: ChargingSessionModel):
 @router.post("/analyze")
 async def analyze_endpoint(body: AnalyzeRequest, request: Request):
     telemetry = body.telemetry or {}
+    v_type = telemetry.get("vehicleType") or body.vehicleType or "car"
+    v_model = telemetry.get("vehicleModel") or body.vehicleModel or ("Ola S1 Pro" if v_type == "bike" else "Porsche Taycan EV")
+
+    default_range = 120.0 if v_type == "bike" else 300.0
     safe_telemetry = {
         "soc": 70,
         "soh": 90,
         "temperatureC": 25,
         "temperatureStatus": "normal",
-        "estimatedRangeKm": 300,
+        "estimatedRangeKm": default_range,
         "mode": "idle",
         "speedKmh": 0,
         "chargingPowerKw": 0,
         "totalDistanceKm": 0,
         "totalEnergyChargedKwh": 0,
+        "vehicleType": v_type,
+        "vehicleModel": v_model,
         **telemetry,
     }
 
@@ -147,6 +153,8 @@ async def analyze_endpoint(body: AnalyzeRequest, request: Request):
         "origin": origin_dict,
         "destination": destination_dict,
         "chargingHistory": charging_history,
+        "vehicleType": v_type,
+        "vehicleModel": v_model,
     }
 
     try:

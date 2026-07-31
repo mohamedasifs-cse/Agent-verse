@@ -18,6 +18,7 @@ import { useEVSystem } from './hooks/useEVSystem';
 import { useVoiceAssistant } from './hooks/useVoiceAssistant';
 import { geocode, reverseGeocode } from './utils/geocoder';
 import { generateRouteStations, generateNearbyStations, deduplicateStations } from './utils/routeStationCalculator';
+import { getVehicleConfig, vehicleConfig } from './utils/vehicleConfig';
 import './index.css';
 
 const TABS = ['Dashboard', 'Map', 'V2V Share', 'Reports'];
@@ -207,12 +208,18 @@ export default function App() {
   const [showWelcomeBanner, setShowWelcomeBanner] = useState(true);
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
 
+  const selectedVehicle = userSession?.vehicleModel || userSession?.vehicleName || localStorage.getItem('selectedVehicle') || 'Porsche Taycan EV';
+  const selectedVehicleType = userSession?.vehicleType || localStorage.getItem('selectedVehicleType') || 'car';
+  const currentVehicleConfig = useMemo(() => getVehicleConfig(selectedVehicle, selectedVehicleType), [selectedVehicle, selectedVehicleType]);
+
   function handleLogin(sessionData) {
     setUserSession(sessionData);
     setAuthStep('welcome'); // Step 2: Show single window welcome screen
     setShowWelcomeBanner(true);
     try {
       localStorage.setItem('ev_user_session', JSON.stringify(sessionData));
+      localStorage.setItem('selectedVehicle', sessionData.vehicleName || sessionData.vehicleModel || 'Porsche Taycan EV');
+      localStorage.setItem('selectedVehicleType', sessionData.vehicleType || 'car');
     } catch (e) {
       console.warn('Could not save session to localStorage:', e);
     }
@@ -224,6 +231,8 @@ export default function App() {
     setAuthStep('login');
     try {
       localStorage.removeItem('ev_user_session');
+      localStorage.removeItem('selectedVehicle');
+      localStorage.removeItem('selectedVehicleType');
     } catch (e) {
       console.warn('Could not clear session:', e);
     }
@@ -393,14 +402,19 @@ export default function App() {
   // Combined real-time telemetry
   const activeTelemetry = {
     ...(telemetry || {}),
+    vehicleType: currentVehicleConfig.type,
+    vehicleModel: currentVehicleConfig.name,
     speedKmh: isDriving ? simSpeedKmh : (telemetry?.speedKmh || 0),
     mode: isDriving ? 'driving' : (telemetry?.mode || 'idle'),
     soc: isDriving ? simSoc : (telemetry?.soc || 80),
-    estimatedRangeKm: isDriving ? Math.round((simSoc / 100) * 500) : (telemetry?.estimatedRangeKm || 400),
+    estimatedRangeKm: Math.round(((isDriving ? simSoc : (telemetry?.soc || 80)) / 100) * currentVehicleConfig.maxRange),
     totalDistanceKm: isDriving ? simTraveledKm : (telemetry?.totalDistanceKm || 0),
     traveledKm: isDriving ? simTraveledKm : 0,
     remainingKm: totalRouteDistanceKm > 0 ? Math.max(0, +(totalRouteDistanceKm - simTraveledKm).toFixed(1)) : 0,
     totalRouteKm: totalRouteDistanceKm,
+    capacityKwh: currentVehicleConfig.batteryCapacity,
+    topSpeedKmh: currentVehicleConfig.topSpeed,
+    chargingTimeStr: currentVehicleConfig.chargingTime,
   };
 
   // Active charging stations (calculates real-time distance & orders by proximity to current location)
@@ -623,8 +637,8 @@ export default function App() {
 
         {/* Right side */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div className="rydex-badge accent" style={{ fontSize: 11, fontWeight: 700 }}>
-            🚗 {userSession.vehicleName}
+          <div className="rydex-badge accent" style={{ fontSize: 12, fontWeight: 800 }}>
+            {currentVehicleConfig.type === 'bike' ? '🏍' : '🚗'} {currentVehicleConfig.name} ({currentVehicleConfig.type === 'bike' ? 'Electric Bike' : 'Electric Car'})
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <div className={`status-dot ${connected ? 'connected' : 'disconnected'}`} />
@@ -763,14 +777,14 @@ export default function App() {
                       ))}
                     </div>
                     <div style={{ height: 440 }}>
-                      <Dashboard3D telemetry={activeTelemetry} activeAgents={activeAgentIds} agentResults={analysisResult?.agents} view={view3D} vehicleName={userSession?.vehicleName} />
+                      <Dashboard3D telemetry={activeTelemetry} activeAgents={activeAgentIds} agentResults={analysisResult?.agents} view={view3D} vehicleName={currentVehicleConfig.name} vehicleType={currentVehicleConfig.type} />
                     </div>
                   </DarkCard>
 
                   {/* Trip Driving Controls (Directly below vehicle display) */}
                   <DarkCard accent={isDriving}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-                      <SectionLabel>🚗 Live Drive Controls</SectionLabel>
+                      <SectionLabel>{currentVehicleConfig.type === 'bike' ? '🏍 Live Ride Controls' : '🚗 Live Drive Controls'}</SectionLabel>
 
                       <button
                         onClick={voiceAssistant.toggleVoice}
@@ -796,11 +810,11 @@ export default function App() {
                               setSimulatorMode('idle');
                             } else {
                               if (routePoints.length < 2) {
-                                alert('Please enter a destination to calculate your route before starting your drive!');
+                                alert('Please enter a destination to calculate your route before starting your trip!');
                                 return;
                               }
                               setIsDriving(true);
-                              setSimulatorMode('driving', { speedKmh: 80 });
+                              setSimulatorMode('driving', { speedKmh: currentVehicleConfig.type === 'bike' ? 45 : 80 });
                             }
                           }}
                           className={`btn-primary ${isDriving ? 'active' : ''}`}
@@ -811,7 +825,7 @@ export default function App() {
                             fontWeight: 800,
                           }}
                         >
-                          {isDriving ? '⏸️ PARK VEHICLE' : '🚗 START YOUR DRIVE'}
+                          {isDriving ? (currentVehicleConfig.type === 'bike' ? '⏸️ PARK SCOOTER' : '⏸️ PARK VEHICLE') : (currentVehicleConfig.type === 'bike' ? '🏍 START YOUR RIDE' : '🚗 START YOUR DRIVE')}
                         </button>
 
                         <button
@@ -886,8 +900,9 @@ export default function App() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
                       <TelemetryCard label="State of Charge" value={activeTelemetry.soc} unit="%" accentColor={activeTelemetry.soc <= 15 ? '#ff5050' : 'var(--accent)'} icon="⚡" />
                       <TelemetryCard label="Est. Range" value={activeTelemetry.estimatedRangeKm} unit=" km" accentColor="var(--text-primary)" icon="🛣️" decimals={0} />
-                      <TelemetryCard label="Distance Driven" value={activeTelemetry.traveledKm || activeTelemetry.totalDistanceKm || 0} unit=" km" accentColor="#00f0ff" icon="🚗" decimals={1} />
-                      <TelemetryCard label="Remaining Trip" value={activeTelemetry.remainingKm || 0} unit=" km" accentColor="#d4d414" icon="🏁" decimals={1} />
+                      <TelemetryCard label="Battery Capacity" value={currentVehicleConfig.batteryCapacity} unit=" kWh" accentColor="var(--accent)" icon="🔋" decimals={1} />
+                      <TelemetryCard label="Top Speed" value={currentVehicleConfig.topSpeed} unit=" km/h" accentColor="#00f0ff" icon="🏎️" decimals={0} />
+                      <TelemetryCard label="Est. Charge Time" value={currentVehicleConfig.chargingTime} unit="" accentColor="#d4d414" icon="⏱️" />
                       <TelemetryCard label="Temperature" value={activeTelemetry.temperatureC || 25} unit="°C" accentColor={(activeTelemetry.temperatureC || 25) > 40 ? 'var(--alert-red)' : 'var(--warning)'} icon="🌡️" />
                     </div>
                   )}
@@ -908,12 +923,13 @@ export default function App() {
                     telemetry={activeTelemetry}
                     isDriving={isDriving}
                     driverAgentData={analysisResult?.agents?.driver}
+                    vehicleType={currentVehicleConfig.type}
                   />
 
                   {/* Vehicle Check & Service-on-KM Monitor Panel */}
                   <VehicleHealthAndEstimatorPanel
                     telemetry={activeTelemetry}
-                    vehicleName={userSession?.vehicleName || 'TATA Safari EV'}
+                    vehicleName={currentVehicleConfig.name}
                   />
 
                   {/* Simulator Controls */}
@@ -1159,6 +1175,9 @@ export default function App() {
                     onToggleDrive={handleToggleDrive}
                     soc={activeTelemetry?.soc ?? 80}
                     onRouteLoaded={handleRouteLoaded}
+                    vehicleType={currentVehicleConfig.type}
+                    maxRange={currentVehicleConfig.maxRange}
+                    traveledKm={activeTelemetry?.traveledKm || 0}
                   />
                 </div>
               </DarkCard>

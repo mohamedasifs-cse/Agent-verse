@@ -8,6 +8,8 @@ class VehicleModel(BaseModel):
     name: str
     make: Optional[str] = None
     model: Optional[str] = None
+    vehicleType: str = "car"  # car | bike
+    vehicleModel: Optional[str] = None
     year: Optional[int] = None
     batteryCapacityKwh: float = 75.0
     maxRangeKm: float = 500.0
@@ -36,6 +38,9 @@ class AnalyzeRequest(BaseModel):
     origin: Optional[LatLon] = None
     destination: Optional[LatLon] = None
     vehicleId: Optional[str] = None
+    vehicleType: Optional[str] = "car"
+    vehicleModel: Optional[str] = None
+
 
 class ModeRequest(BaseModel):
     mode: str

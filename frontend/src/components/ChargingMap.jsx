@@ -184,6 +184,9 @@ export default function ChargingMap({
   onToggleDrive = null,
   soc = 80,
   onRouteLoaded = null,
+  vehicleType = 'car',
+  maxRange = 400,
+  traveledKm = 0,
 }) {
   const center = [vehicleLat, vehicleLon];
   const [routePoints, setRoutePoints] = useState(null);
@@ -224,27 +227,29 @@ export default function ChargingMap({
       .finally(() => setLoadingRoute(false));
   }, [destLat, destLon, vehicleLat, vehicleLon, onRouteLoaded]);
 
-  // Generate charging stations along the entire route from start to destination
+  // Generate charging stations along the entire route tailored for Car vs Scooter
   const { allRouteStations, totalTripKm } = useMemo(() => {
     if (routePoints && routePoints.length > 1) {
       const { allStations, totalTripDistanceKm } = generateRouteStations(
         routePoints,
         { lat: vehicleLat, lon: vehicleLon },
         { lat: destLat, lon: destLon },
-        stations
+        stations,
+        vehicleType,
+        maxRange
       );
       return { allRouteStations: allStations, totalTripKm: totalTripDistanceKm };
     }
     return { allRouteStations: stations, totalTripKm: 0 };
-  }, [routePoints, vehicleLat, vehicleLon, destLat, destLon, stations]);
+  }, [routePoints, vehicleLat, vehicleLon, destLat, destLon, stations, vehicleType, maxRange]);
 
-  // Calculate battery range thresholds & optimal next rest stop
+  // Calculate battery range thresholds & optimal next rest stop before vehicle moves & dynamically as it travels
   const restStopPlan = useMemo(() => {
     if (allRouteStations && allRouteStations.length > 0 && totalTripKm > 0) {
-      return calculateNextRestStop(allRouteStations, totalTripKm, soc);
+      return calculateNextRestStop(allRouteStations, totalTripKm, soc, vehicleType, maxRange, traveledKm);
     }
     return null;
-  }, [allRouteStations, totalTripKm, soc]);
+  }, [allRouteStations, totalTripKm, soc, vehicleType, maxRange, traveledKm]);
 
   // Stations located along route
   const stationsOnRoute = allRouteStations;

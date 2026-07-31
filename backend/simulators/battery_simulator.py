@@ -8,9 +8,17 @@ class VehicleBatterySimulator:
         self.sio = sio
         self.vehicle_id = vehicle_id
 
-        # Battery specs
-        self.capacity_kwh = options.get("capacityKwh", 75.0)
-        self.max_range_km = options.get("maxRangeKm", 500.0)
+        # Vehicle type & model
+        self.vehicle_type = options.get("vehicleType", "car")  # car | bike
+        self.vehicle_model = options.get("vehicleModel", "Porsche Taycan EV" if self.vehicle_type == "car" else "Ola S1 Pro")
+
+        # Battery specs auto-configured based on vehicle type if not explicitly passed
+        if self.vehicle_type == "bike":
+            self.capacity_kwh = float(options.get("capacityKwh", 4.0))
+            self.max_range_km = float(options.get("maxRangeKm", 135.0))
+        else:
+            self.capacity_kwh = float(options.get("capacityKwh", 75.0))
+            self.max_range_km = float(options.get("maxRangeKm", 500.0))
 
         # State
         self.soc = float(options.get("initialSoc", 80.0))
@@ -21,6 +29,8 @@ class VehicleBatterySimulator:
         self.charging_power_kw = 0.0
         self.total_energy_charged = 0.0
         self.total_distance_km = 0.0
+        self.continuous_ride_minutes = 0.0
+        self.rain_active = False
 
         self.tick_ms = options.get("tickMs", 60000)
         self._task: Optional[asyncio.Task] = None
@@ -31,7 +41,7 @@ class VehicleBatterySimulator:
             return
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
-        print(f"[Simulator] Vehicle {self.vehicle_id} started")
+        print(f"[Simulator] Vehicle {self.vehicle_id} ({self.vehicle_type}: {self.vehicle_model}) started")
 
     def stop(self):
         self._running = False
@@ -40,15 +50,36 @@ class VehicleBatterySimulator:
         self._task = None
         print(f"[Simulator] Vehicle {self.vehicle_id} stopped")
 
+    def set_vehicle_info(self, vehicle_type: str, vehicle_model: str):
+        self.vehicle_type = vehicle_type
+        self.vehicle_model = vehicle_model
+        if vehicle_type == "bike":
+            self.capacity_kwh = 4.0
+            self.max_range_km = 135.0
+        else:
+            self.capacity_kwh = 75.0
+            self.max_range_km = 500.0
+
     def set_mode(self, mode: str, params: Optional[Dict[str, Any]] = None):
         params = params or {}
+        if "vehicleType" in params:
+            v_type = params["vehicleType"]
+            v_model = params.get("vehicleModel", "Ola S1 Pro" if v_type == "bike" else "Porsche Taycan EV")
+            self.set_vehicle_info(v_type, v_model)
+
         self.mode = mode
         if mode == "driving":
-            self.speed_kmh = float(params.get("speedKmh", 80.0))
+            default_speed = 45.0 if self.vehicle_type == "bike" else 80.0
+            self.speed_kmh = float(params.get("speedKmh", default_speed))
             self.charging_power_kw = 0.0
         elif mode == "charging":
+            default_power = 2.5 if self.vehicle_type == "bike" else 50.0
             self.speed_kmh = 0.0
-            self.charging_power_kw = float(params.get("powerKw", 50.0))
+            self.charging_power_kw = float(params.get("powerKw", default_power))
+        elif mode == "overheat":
+            self.temperature_c = 48.0
+        elif mode == "rain":
+            self.rain_active = True
         else:
             self.speed_kmh = 0.0
             self.charging_power_kw = 0.0
@@ -67,15 +98,24 @@ class VehicleBatterySimulator:
         tick_hours = self.tick_ms / 3600000.0
 
         if self.mode == "driving":
-            consumption_kwh_per_100 = 15.0 + (self.speed_kmh - 60.0) * 0.08
-            distance_tick = self.speed_kmh * tick_hours
-            energy_used_kwh = (consumption_kwh_per_100 / 100.0) * distance_tick
-            soc_drop = (energy_used_kwh / (self.capacity_kwh * (self.soh / 100.0))) * 100.0
+            if self.vehicle_type == "bike":
+                # Bike energy consumption: ~3.0 kWh per 100km
+                consumption_kwh_per_100 = 3.0 + (self.speed_kmh - 35.0) * 0.04
+                distance_tick = self.speed_kmh * tick_hours
+                energy_used_kwh = (consumption_kwh_per_100 / 100.0) * distance_tick
+                soc_drop = (energy_used_kwh / (self.capacity_kwh * (self.soh / 100.0))) * 100.0
+                self.continuous_ride_minutes += (self.tick_ms / 60000.0)
+            else:
+                consumption_kwh_per_100 = 15.0 + (self.speed_kmh - 60.0) * 0.08
+                distance_tick = self.speed_kmh * tick_hours
+                energy_used_kwh = (consumption_kwh_per_100 / 100.0) * distance_tick
+                soc_drop = (energy_used_kwh / (self.capacity_kwh * (self.soh / 100.0))) * 100.0
 
             self.soc = max(0.0, self.soc - soc_drop)
             self.total_distance_km += distance_tick
 
-            target_temp = 25.0 + (self.speed_kmh / 120.0) * 20.0
+            max_expected_speed = 90.0 if self.vehicle_type == "bike" else 120.0
+            target_temp = 25.0 + (self.speed_kmh / max_expected_speed) * 18.0
             self.temperature_c += (target_temp - self.temperature_c) * 0.1
             self.soh = max(70.0, self.soh - 0.0001)
 
@@ -87,16 +127,18 @@ class VehicleBatterySimulator:
             self.soc = min(100.0, self.soc + soc_gain)
             self.total_energy_charged += effective_power * tick_hours
 
-            target_temp = 25.0 + (self.charging_power_kw / 150.0) * 25.0
+            denom = 5.0 if self.vehicle_type == "bike" else 150.0
+            target_temp = 25.0 + (self.charging_power_kw / denom) * 15.0
             self.temperature_c += (target_temp - self.temperature_c) * 0.15
 
             if self.soc >= 100.0:
                 self.set_mode("idle")
 
         else:
-            vampire_drain = 0.0417 * tick_hours
+            vampire_drain = 0.02 * tick_hours if self.vehicle_type == "bike" else 0.0417 * tick_hours
             self.soc = max(0.0, self.soc - vampire_drain)
             self.temperature_c += (22.0 - self.temperature_c) * 0.05
+            self.continuous_ride_minutes = max(0.0, self.continuous_ride_minutes - 1.0)
 
         self.temperature_c = round(self.temperature_c, 1)
         self.soc = round(self.soc, 2)
@@ -117,6 +159,10 @@ class VehicleBatterySimulator:
         )
         return {
             "vehicleId": self.vehicle_id,
+            "vehicleType": self.vehicle_type,
+            "vehicleModel": self.vehicle_model,
+            "capacityKwh": self.capacity_kwh,
+            "maxRangeKm": self.max_range_km,
             "soc": self.soc,
             "soh": self.soh,
             "temperatureC": self.temperature_c,
@@ -127,5 +173,8 @@ class VehicleBatterySimulator:
             "chargingPowerKw": self.charging_power_kw,
             "totalDistanceKm": round(self.total_distance_km, 1),
             "totalEnergyChargedKwh": round(self.total_energy_charged, 2),
+            "continuousRideMinutes": round(self.continuous_ride_minutes, 1),
+            "rainActive": self.rain_active,
             "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
         }
+

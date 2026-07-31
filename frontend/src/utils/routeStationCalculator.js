@@ -5,16 +5,24 @@
  * 2. Calculates exact battery discharge curves and recommends the OPTIMAL NEXT REST & CHARGE STOP.
  */
 
-// Preset realistic highway charging brands for India & Global routes
-const HIGHWAY_CHARGER_BRANDS = [
+// Preset realistic highway charging brands for Electric Cars
+const CAR_CHARGER_BRANDS = [
   { name: 'Tata Power EZ Charge - Highway Plaza', power: 150, price: 22.5, amenities: ['☕ Coffee', '🚻 Restroom', '🍔 Dining'] },
   { name: 'Jio-bp pulse Superhub', power: 200, price: 24.0, amenities: ['☕ Cafe', '🚻 Washrooms', '📶 5G WiFi'] },
   { name: 'Zeon Charging - Express Stop', power: 120, price: 21.0, amenities: ['🏨 Motel', '☕ Coffee', '🚻 Restroom'] },
   { name: 'Shell Recharge - Energy Hub', power: 180, price: 23.5, amenities: ['🍔 Fast Food', '🚻 Clean Restrooms'] },
   { name: 'Statiq UltraFast Hub', power: 150, price: 20.0, amenities: ['☕ Lounge', '🚻 Restroom'] },
   { name: 'ChargeZone Highway Station', power: 240, price: 25.0, amenities: ['☕ Coffee', '🚻 Restroom', '🛒 Mart'] },
-  { name: 'Relux Electric Charging Station', power: 120, price: 19.5, amenities: ['🚻 Restroom', '🥤 Refreshments'] },
-  { name: 'ElectreeFi Highway Hub', power: 100, price: 18.5, amenities: ['☕ Tea & Coffee', '🚻 Restroom'] },
+];
+
+// Preset realistic charging & swap brands for Electric Bikes & Scooters
+const SCOOTER_CHARGER_BRANDS = [
+  { name: 'Ola Hypercharger - Express Swap Hub', power: 30, price: 15.0, amenities: ['🥤 Refreshments', '🚻 Restroom', '🔋 Quick Swap'] },
+  { name: 'Ather Grid - Fast Charge Point', power: 25, price: 16.5, amenities: ['☕ Cafe', '🚻 Restroom', '📶 Free WiFi'] },
+  { name: 'TVS Smart Hub - Scooter Charger', power: 22, price: 14.5, amenities: ['🚻 Restroom', '🪑 Sitting Lounge'] },
+  { name: 'Battery Smart Swap Station', power: 35, price: 12.0, amenities: ['🔋 2-Min Battery Swap', '🚻 Restroom'] },
+  { name: 'Hero Vida Fast Charge Hub', power: 20, price: 15.5, amenities: ['🥤 Tea & Snacks', '🚻 Restroom'] },
+  { name: 'Simple Energy Fast Charging Point', power: 25, price: 14.0, amenities: ['🚻 Restroom', '📶 WiFi'] },
 ];
 
 /**
@@ -149,9 +157,9 @@ export async function fetchRealStationsFromOSM(lat, lon, radiusKm = 30, timeoutM
 }
 
 /**
- * Generate charging stations along the route polyline from start to finish
+ * Generate charging stations along the route polyline tailored specifically for Car vs Scooter
  */
-export function generateRouteStations(routePoints, origin, destination, baseStations = []) {
+export function generateRouteStations(routePoints, origin, destination, baseStations = [], vehicleType = 'car', estMaxRange = 400) {
   if (!routePoints || routePoints.length < 2) return baseStations;
 
   const totalPoints = routePoints.length;
@@ -166,8 +174,12 @@ export function generateRouteStations(routePoints, origin, destination, baseStat
     cumulativeDist.push(totalKm);
   }
 
-  // Sample stations every ~35 km to 50 km along the route
-  const intervalKm = totalKm > 300 ? 55 : totalKm > 150 ? 40 : 25;
+  const isBike = vehicleType === 'bike' || vehicleType === 'scooter';
+  const brandPool = isBike ? SCOOTER_CHARGER_BRANDS : CAR_CHARGER_BRANDS;
+  const connectorTypes = isBike ? ['2-Wheel Fast Charger', 'Smart Battery Swap'] : ['CCS2 Fast Charger', 'Type 2 AC'];
+
+  // Sample stations tailored to vehicle range (every ~30km for bikes vs ~55km for cars)
+  const intervalKm = isBike ? 35 : (totalKm > 300 ? 55 : 40);
   const numStops = Math.max(3, Math.floor(totalKm / intervalKm));
 
   for (let s = 1; s <= numStops; s++) {
@@ -180,13 +192,12 @@ export function generateRouteStations(routePoints, origin, destination, baseStat
     }
 
     const [lat, lon] = routePoints[pointIdx];
-    // Add small realistic offset off the main highway (0.5 to 1.8 km)
-    const offsetLat = lat + (Math.random() - 0.5) * 0.015;
-    const offsetLon = lon + (Math.random() - 0.5) * 0.015;
+    const offsetLat = lat + (Math.random() - 0.5) * 0.012;
+    const offsetLon = lon + (Math.random() - 0.5) * 0.012;
 
-    const brand = HIGHWAY_CHARGER_BRANDS[(s - 1) % HIGHWAY_CHARGER_BRANDS.length];
-    const totalBays = Math.floor(Math.random() * 4) + 4; // 4 to 8 bays
-    const availableBays = Math.floor(Math.random() * (totalBays - 1)) + 1; // At least 1 free bay
+    const brand = brandPool[(s - 1) % brandPool.length];
+    const totalBays = Math.floor(Math.random() * 4) + 4;
+    const availableBays = Math.floor(Math.random() * (totalBays - 1)) + 1;
 
     stationsAlongRoute.push({
       id: `route-station-${s}-${Math.round(targetDist)}`,
@@ -204,7 +215,7 @@ export function generateRouteStations(routePoints, origin, destination, baseStat
       amenities: brand.amenities,
       is_operational: true,
       is_highway_hub: true,
-      connector_types: ['CCS2 Fast Charger', 'Type 2 AC'],
+      connector_types: connectorTypes,
     });
   }
 
@@ -220,47 +231,61 @@ export function generateRouteStations(routePoints, origin, destination, baseStat
 
 
 /**
- * Calculates battery discharge & recommends the OPTIMAL NEXT REST & CHARGE STOP
+ * Calculates battery discharge & pre-calculates OPTIMAL NEXT REST & CHARGE STOP
+ * tailored specifically for Car vs Scooter based on vehicle estimated range.
  */
-export function calculateNextRestStop(allStations, totalTripKm, currentSoc = 80, batteryCapacityKwh = 80) {
+export function calculateNextRestStop(allStations, totalTripKm, currentSoc = 80, vehicleType = 'car', maxFullRange = 400, traveledKm = 0) {
   if (!allStations || allStations.length === 0) return null;
 
-  // EV Energy consumption ~0.18 kWh / km
-  const consumptionKwhPerKm = 0.18;
-  const maxRangeKm = Math.round((batteryCapacityKwh * (currentSoc / 100)) / consumptionKwhPerKm);
+  const currentPositionKm = traveledKm || 0;
+  const isBike = vehicleType === 'bike' || vehicleType === 'scooter';
 
-  // Critical battery threshold (stop when SoC drops to ~15% - 22%)
-  const minSocReserve = 18; // Keep 18% reserve
-  const maxSafeKm = Math.round(((currentSoc - minSocReserve) / 100) * batteryCapacityKwh / consumptionKwhPerKm);
+  // Calculate actual remaining battery range in km from current position
+  // e.g. Ola S1 Pro (80% of 176 km = 140.8 km)
+  const currentEstRangeKm = Math.max(10, Math.round((currentSoc / 100) * maxFullRange));
 
-  // Filter stations located before maxSafeKm
+  // Maximum reachable position before battery depletion (with 15% safety reserve)
+  const maxReachPositionKm = currentPositionKm + Math.round(currentEstRangeKm * 0.85);
+
+  // Optimal target station distance ahead (at ~72% of remaining range before battery depletion)
+  const targetDistanceAhead = Math.round(currentEstRangeKm * 0.72);
+  const targetStopPosKm = currentPositionKm + targetDistanceAhead;
+
+  // Filter stations strictly AHEAD of vehicle's current position AND BEFORE battery depletion!
   const candidateStops = allStations
-    .filter(st => st.distanceFromOriginKm && st.distanceFromOriginKm > 10)
+    .filter(st => {
+      const distFromStart = st.distanceFromOriginKm || st.distance_km || 0;
+      return distFromStart > currentPositionKm + 2 && distFromStart <= maxReachPositionKm + 15;
+    })
     .map(st => {
-      const distFromStart = st.distanceFromOriginKm;
-      const socOnArrival = Math.max(2, Math.round(currentSoc - (distFromStart * consumptionKwhPerKm / batteryCapacityKwh) * 100));
-      const score = (st.available_bays > 0 ? 40 : 0) + (st.max_power_kw / 5) - Math.abs(distFromStart - maxSafeKm) * 0.8;
-      return { ...st, socOnArrival, score };
+      const distFromStart = st.distanceFromOriginKm || st.distance_km || 0;
+      const distAhead = Math.max(0, distFromStart - currentPositionKm);
+      const socOnArrival = Math.max(2, Math.round(currentSoc - (distAhead / currentEstRangeKm) * currentSoc));
+      
+      const proximityDelta = Math.abs(distFromStart - targetStopPosKm);
+      const isBikeStation = st.name?.toLowerCase().includes('ola') || st.name?.toLowerCase().includes('ather') || st.name?.toLowerCase().includes('swap') || st.connector_types?.some(c => (c || '').includes('2-Wheel') || (c || '').includes('Swap'));
+      const typeBonus = isBike ? (isBikeStation ? 60 : 10) : (!isBikeStation ? 60 : 10);
+
+      const score = 1000 - (proximityDelta * 5) + (st.available_bays > 0 ? 80 : 0) + typeBonus;
+      return { ...st, distAhead, socOnArrival, score };
     })
     .sort((a, b) => b.score - a.score);
 
-  const bestStop = candidateStops.length > 0 ? candidateStops[0] : allStations[0];
+  const fallbackAhead = allStations.filter(st => (st.distanceFromOriginKm || 0) > currentPositionKm).sort((a, b) => (a.distanceFromOriginKm || 0) - (b.distanceFromOriginKm || 0));
+  const bestStop = candidateStops.length > 0 ? candidateStops[0] : (fallbackAhead.length > 0 ? fallbackAhead[0] : allStations[0]);
 
-  // Calculate charge needed at the best stop to reach destination comfortably
-  const distFromStopToDest = totalTripKm - (bestStop.distanceFromOriginKm || 50);
-  const kwhToCompleteTrip = distFromStopToDest * consumptionKwhPerKm;
-  const targetSocForDest = Math.min(90, Math.round(((kwhToCompleteTrip + 15) / batteryCapacityKwh) * 100));
-  const socToGain = Math.max(10, targetSocForDest - (bestStop.socOnArrival || 15));
-  const kwhToCharge = (socToGain / 100) * batteryCapacityKwh;
-  const chargeTimeMins = Math.max(12, Math.round((kwhToCharge / (bestStop.max_power_kw || 150)) * 60));
+  const distFromStopToDest = Math.max(0, totalTripKm - (bestStop.distanceFromOriginKm || targetStopPosKm));
+  const targetSocForDest = Math.min(90, Math.round(currentSoc + 35));
+  const socToGain = Math.max(15, targetSocForDest - (bestStop.socOnArrival || 20));
+  const chargeTimeMins = isBike ? 15 : Math.max(15, Math.round((socToGain / 100) * 30));
 
   return {
     bestStop,
     currentSoc,
-    maxRangeKm,
-    maxSafeKm,
+    maxRangeKm: currentEstRangeKm,
+    maxSafeKm: targetStopPosKm,
     totalTripKm,
-    socOnArrival: bestStop.socOnArrival || 18,
+    socOnArrival: bestStop.socOnArrival || 20,
     targetSocForDest,
     socToGain,
     chargeTimeMins,
