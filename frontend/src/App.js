@@ -292,10 +292,21 @@ export default function App() {
   useEffect(() => {
     if (!isAntiGravity) return;
     const interval = setInterval(() => {
-      setSimSoc((prevSoc) => Math.min(100, +(prevSoc + 1.5).toFixed(2)));
-    }, 1200);
+      setSimSoc((prevSoc) => {
+        if (prevSoc >= 100) {
+          setIsAntiGravity(false);
+          return 100;
+        }
+        const boostStep = 1.0 * simMultiplier;
+        const nextSoc = Math.min(100, +(prevSoc + boostStep).toFixed(1));
+        if (nextSoc >= 100) {
+          setIsAntiGravity(false);
+        }
+        return nextSoc;
+      });
+    }, 500);
     return () => clearInterval(interval);
-  }, [isAntiGravity]);
+  }, [isAntiGravity, simMultiplier]);
 
   // Synchronize origin with vehiclePos if not driving
   useEffect(() => {
@@ -303,13 +314,6 @@ export default function App() {
       setVehiclePos({ lat: origin.lat, lon: origin.lon });
     }
   }, [origin, isDriving, currentRouteIndex]);
-
-  // Synchronize simSoc with telemetry when idle to maintain continuous battery level
-  useEffect(() => {
-    if (!isDriving && telemetry?.soc != null) {
-      setSimSoc(telemetry.soc);
-    }
-  }, [telemetry?.soc, isDriving]);
 
   // Callback when ChargingMap calculates OSRM route points
   const handleRouteLoaded = useCallback((data) => {
@@ -386,7 +390,14 @@ export default function App() {
 
         // Physics battery drain: ~0.18 kWh per km = ~0.225% SoC per km (80 kWh pack)
         const socDrop = stepDistKm * 0.225 * simMultiplier;
-        setSimSoc((prevSoc) => Math.max(2, +(prevSoc - socDrop).toFixed(2)));
+        setSimSoc((prevSoc) => {
+          const nextSoc = Math.max(0, +(prevSoc - socDrop).toFixed(1));
+          if (nextSoc <= 0) {
+            setIsDriving(false);
+            setSimSpeedKmh(0);
+          }
+          return nextSoc;
+        });
 
         // Calculate heading bearing angle in degrees
         const dLon = (pt2[1] - pt1[1]) * Math.PI / 180;
@@ -415,12 +426,12 @@ export default function App() {
     ...(telemetry || {}),
     vehicleType: currentVehicleConfig.type,
     vehicleModel: currentVehicleConfig.name,
-    speedKmh: isDriving ? simSpeedKmh : (telemetry?.speedKmh || 0),
-    mode: isDriving ? 'driving' : (telemetry?.mode || 'idle'),
-    soc: isDriving ? simSoc : (telemetry?.soc || 80),
-    estimatedRangeKm: Math.round(((isDriving ? simSoc : (telemetry?.soc || 80)) / 100) * currentVehicleConfig.maxRange),
-    totalDistanceKm: isDriving ? simTraveledKm : (telemetry?.totalDistanceKm || 0),
-    traveledKm: isDriving ? simTraveledKm : 0,
+    speedKmh: isDriving ? simSpeedKmh : 0,
+    mode: isDriving ? 'driving' : (isAntiGravity ? 'charging' : 'idle'),
+    soc: simSoc,
+    estimatedRangeKm: Math.round((simSoc / 100) * currentVehicleConfig.maxRange),
+    totalDistanceKm: simTraveledKm > 0 ? simTraveledKm : (telemetry?.totalDistanceKm || 0),
+    traveledKm: simTraveledKm,
     remainingKm: totalRouteDistanceKm > 0 ? Math.max(0, +(totalRouteDistanceKm - simTraveledKm).toFixed(1)) : 0,
     totalRouteKm: totalRouteDistanceKm,
     capacityKwh: currentVehicleConfig.batteryCapacity,
@@ -547,10 +558,15 @@ export default function App() {
         alert('Please select or search a destination in Route Planning before starting your drive!');
         return;
       }
+      if (simSoc <= 0) {
+        alert('Battery is depleted (0%). Please click BOOST NOW to charge your vehicle before starting!');
+        return;
+      }
+      setIsAntiGravity(false);
       setIsDriving(true);
       setSimulatorMode('driving', { speedKmh: 80 });
     }
-  }, [isDriving, routePoints, setSimulatorMode]);
+  }, [isDriving, routePoints, simSoc, setSimulatorMode]);
 
 
   const activeAgentIds = activeAgents.map(name => ({
@@ -722,13 +738,15 @@ export default function App() {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255, 255, 255, 0.04)', padding: '6px 14px', borderRadius: 20, border: '1px solid var(--border-muted)' }}>
-            <span style={{ fontSize: 13 }}>🔌</span>
-            <div>
-              <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800 }}>STATIONS</div>
-              <div style={{ fontSize: 13, fontWeight: 900, color: '#d4d414' }}>{activeStations.length} Hubs</div>
+          {(origin && destination) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255, 255, 255, 0.04)', padding: '6px 14px', borderRadius: 20, border: '1px solid var(--border-muted)' }}>
+              <span style={{ fontSize: 13 }}>🔌</span>
+              <div>
+                <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800 }}>STATIONS</div>
+                <div style={{ fontSize: 13, fontWeight: 900, color: '#d4d414' }}>{activeStations.length} Hubs</div>
+              </div>
             </div>
-          </div>
+          )}
 
         </div>
       </div>
@@ -841,6 +859,11 @@ export default function App() {
                                 alert('Please enter a destination to calculate your route before starting your trip!');
                                 return;
                               }
+                              if (simSoc <= 0) {
+                                alert('Battery is depleted (0%). Please click BOOST NOW to charge your vehicle before starting!');
+                                return;
+                              }
+                              setIsAntiGravity(false);
                               setIsDriving(true);
                               setSimulatorMode('driving', { speedKmh: currentVehicleConfig.type === 'bike' ? 45 : 80 });
                             }
@@ -859,16 +882,32 @@ export default function App() {
                         {/* Futuristic Anti-Gravity Activate Button (Positioned below vehicle image) */}
                         <AntiGravityButton
                           isActive={isAntiGravity}
-                          onToggle={() => setIsAntiGravity(!isAntiGravity)}
-                          isDisabled={activeTelemetry.mode === 'charging'}
+                          onToggle={() => {
+                            if (!isAntiGravity) {
+                              if (simSoc >= 100) {
+                                alert('Battery is already fully charged (100%)!');
+                                return;
+                              }
+                              setIsDriving(false);
+                              setSimSpeedKmh(0);
+                              setIsAntiGravity(true);
+                              setSimulatorMode('charging', { powerKw: 150 });
+                            } else {
+                              setIsAntiGravity(false);
+                              setSimulatorMode('idle');
+                            }
+                          }}
+                          isDisabled={simSoc >= 100}
                         />
 
                         <button
                           onClick={() => {
                             setIsDriving(false);
+                            setIsAntiGravity(false);
                             setCurrentRouteIndex(0);
-                            setSimSoc(telemetry?.soc || 80);
+                            setSimSoc(80);
                             setSimTraveledKm(0);
+                            setSimSpeedKmh(0);
                             if (routePoints.length > 0) {
                               setVehiclePos({ lat: routePoints[0][0], lon: routePoints[0][1] });
                             }

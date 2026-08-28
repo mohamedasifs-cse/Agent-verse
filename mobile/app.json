@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "EV Multi-Agent OS",
+    "slug": "ev-multi-agent-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "evmultiagent",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#080805"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#080805"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-location"
+    ]
+  }
+}

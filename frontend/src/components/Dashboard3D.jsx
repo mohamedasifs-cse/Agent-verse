@@ -6,9 +6,9 @@ import { EnergyRingEffect, AntiGravityParticles } from './AntiGravityMode';
 
 // ── Status overlay badge ───────────────────────────────────────────────────────
 function StatusBadge({ mode, soc }) {
-  const color = soc < 15 ? '#ff5050' : soc < 30 ? '#f59e0b' : mode === 'charging' ? '#d4d414' : '#22c55e';
-  const label = soc < 15 ? ' Critical Battery'
-    : soc < 30 ? ' Low Battery'
+  const color = soc <= 10 ? '#ff5050' : soc <= 20 ? '#f59e0b' : mode === 'charging' ? '#d4d414' : '#22c55e';
+  const label = soc <= 10 ? ' Critical Battery'
+    : soc <= 20 ? ' Low Battery'
       : mode === 'charging' ? ' Charging'
         : mode === 'driving' ? ' Driving'
           : 'Parked';
@@ -37,7 +37,7 @@ function SocArc({ soc }) {
   const r = 26;
   const circ = 2 * Math.PI * r;
   const dash = (soc / 100) * circ;
-  const color = soc < 15 ? '#ff5050' : soc < 30 ? '#f59e0b' : '#d4d414';
+  const color = soc <= 10 ? '#ff5050' : soc <= 20 ? '#f59e0b' : '#d4d414';
 
   return (
     <div style={{
