@@ -8,7 +8,7 @@ export const vehicleConfig = {
   "Porsche Taycan EV": {
     type: "car",
     image: "/vehicles/porsche-taycan.png",
-    fallbackImage: "/vehicles/ev_car.png",
+    fallbackImage: "/ev_car.png",
     batteryCapacity: 93.4,
     maxRange: 484,
     topSpeed: 260,
@@ -20,7 +20,7 @@ export const vehicleConfig = {
   "Tata Nexon EV": {
     type: "car",
     image: "/vehicles/tata-nexon.png",
-    fallbackImage: "/vehicles/tata_safari_ev.png",
+    fallbackImage: "/tata_safari_ev.png",
     batteryCapacity: 40.5,
     maxRange: 465,
     topSpeed: 150,
@@ -44,7 +44,7 @@ export const vehicleConfig = {
   "Mahindra XUV400": {
     type: "car",
     image: "/vehicles/xuv400.png",
-    fallbackImage: "/vehicles/ev_car.png",
+    fallbackImage: "/ev_car.png",
     batteryCapacity: 39.4,
     maxRange: 456,
     topSpeed: 150,
@@ -56,7 +56,7 @@ export const vehicleConfig = {
   "MG ZS EV": {
     type: "car",
     image: "/vehicles/mg-zs.png",
-    fallbackImage: "/vehicles/ev_car.png",
+    fallbackImage: "/ev_car.png",
     batteryCapacity: 50.3,
     maxRange: 461,
     topSpeed: 175,
@@ -67,7 +67,7 @@ export const vehicleConfig = {
 
   "Ola S1 Pro": {
     type: "bike",
-    image: "/vehicles/ola-s1-pro.jpg",
+    image: "/vehicles/ola-s1-pro.png",
     fallbackImage: "/vehicles/ola-s1-pro.jpg",
     batteryCapacity: 4,
     maxRange: 176,
@@ -161,8 +161,8 @@ export function getVehicleConfig(vehicleName = '', vehicleType = 'car') {
   return {
     name: vehicleName || (isBike ? 'Ola S1 Pro' : 'Porsche Taycan EV'),
     type: isBike ? 'bike' : 'car',
-    image: isBike ? '/vehicles/ola-s1-pro.jpg' : '/vehicles/porsche-taycan.png',
-    fallbackImage: isBike ? '/vehicles/ola-s1-pro.jpg' : '/vehicles/ev_car.png',
+    image: isBike ? '/vehicles/ola-s1-pro.png' : '/vehicles/porsche-taycan.png',
+    fallbackImage: isBike ? '/vehicles/ola-s1-pro.jpg' : '/ev_car.png',
     batteryCapacity: isBike ? 4.0 : 75.0,
     maxRange: isBike ? 150 : 450,
     topSpeed: isBike ? 95 : 180,

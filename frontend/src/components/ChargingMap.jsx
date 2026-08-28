@@ -99,22 +99,35 @@ function createStationIcon(available, isGreen, isBestOnRoute = false) {
   });
 }
 
-// ── Map auto-fit to route ──────────────────────────────────────────────────────
-function MapBoundsUpdater({ routePoints, vehicleLat, vehicleLon, destLat, destLon }) {
+// ── Map auto-fit to route and charging stations ───────────────────────────────
+function MapBoundsUpdater({ routePoints, vehicleLat, vehicleLon, destLat, destLon, stations = [] }) {
   const map = useMap();
   useEffect(() => {
-    if (routePoints && routePoints.length > 1) {
-      const bounds = L.latLngBounds(routePoints);
-      map.fitBounds(bounds, { padding: [48, 48] });
-    } else if (destLat && destLon) {
-      const bounds = L.latLngBounds(
-        [vehicleLat, vehicleLon],
-        [destLat, destLon]
-      );
-      map.fitBounds(bounds, { padding: [60, 60] });
+    const points = [];
+    if (vehicleLat != null && vehicleLon != null) {
+      points.push([vehicleLat, vehicleLon]);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routePoints, destLat, destLon]);
+    if (destLat != null && destLon != null) {
+      points.push([destLat, destLon]);
+    }
+    if (routePoints && routePoints.length > 0) {
+      routePoints.forEach(pt => points.push(pt));
+    }
+    if (stations && stations.length > 0) {
+      stations.forEach(st => {
+        if (st.lat != null && st.lon != null) {
+          points.push([st.lat, st.lon]);
+        }
+      });
+    }
+
+    if (points.length > 0) {
+      const bounds = L.latLngBounds(points);
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [48, 48], maxZoom: 15 });
+      }
+    }
+  }, [map, routePoints, vehicleLat, vehicleLon, destLat, destLon, stations]);
   return null;
 }
 
@@ -289,10 +302,10 @@ export default function ChargingMap({
           style={{ height: '100%', width: '100%', background: '#080805' }}
           zoomControl={true}
         >
-          {/* Dark map tiles */}
+          {/* OpenStreetMap tiles */}
           <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             maxZoom={19}
           />
 
@@ -302,6 +315,7 @@ export default function ChargingMap({
             vehicleLon={vehicleLon}
             destLat={destLat}
             destLon={destLon}
+            stations={allRouteStations}
           />
 
           {/* ── Route polyline (Google Maps style) ── */}
