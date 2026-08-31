@@ -17,6 +17,13 @@ export function useEVSystem() {
   const [stationsLoading, setStationsLoading] = useState(false);
   const [connected, setConnected] = useState(false);
 
+  // Booking & Queue state
+  const [userBookings, setUserBookings] = useState([]);
+  const [activeBooking, setActiveBooking] = useState(null);
+  const [stationSlots, setStationSlots] = useState(null);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState(null);
+
   const socketRef = useRef(null);
   const liveLogRef = useRef([]);
 
@@ -24,12 +31,29 @@ export function useEVSystem() {
   const telemetryRef = useRef(null);
   const vehicleIdRef = useRef(null);
 
+  const fetchUserBookings = useCallback(async (userId = 'demo') => {
+    try {
+      const res = await axios.get(`${API_BASE}/bookings`, { params: { userId } });
+      const bookings = res.data || [];
+      setUserBookings(bookings);
+      const active = bookings.find(b => ['BOOKED', 'WAITING', 'CHARGING'].includes(b.status));
+      setActiveBooking(active || null);
+      return bookings;
+    } catch (e) {
+      console.warn('[useEVSystem] Failed to fetch user bookings:', e);
+      return [];
+    }
+  }, []);
+
   // ── Socket ────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const socket = io(SOCKET_URL, { transports: ['websocket'] });
     socketRef.current = socket;
 
-    socket.on('connect', () => setConnected(true));
+    socket.on('connect', () => {
+      setConnected(true);
+      fetchUserBookings();
+    });
     socket.on('disconnect', () => setConnected(false));
 
     socket.on('simulator:ready', ({ vehicleId: vid, telemetry: t }) => {
@@ -58,8 +82,32 @@ export function useEVSystem() {
       setActiveAgents([]);
     });
 
+    // ── Live Booking & Queue Socket Updates ──
+    socket.on('queue:updated', ({ stationId, queueCount, queue }) => {
+      setStationSlots(prev => {
+        if (prev && String(prev.stationId) === String(stationId)) {
+          return {
+            ...prev,
+            currentQueueCount: queueCount,
+            estimatedWaitTimeMinutes: queueCount * 15,
+          };
+        }
+        return prev;
+      });
+      fetchUserBookings();
+    });
+
+    socket.on('booking:updated', (updatedBooking) => {
+      fetchUserBookings();
+    });
+
     return () => socket.disconnect();
-  }, []);
+  }, [fetchUserBookings]);
+
+  // Initial load of user bookings
+  useEffect(() => {
+    fetchUserBookings();
+  }, [fetchUserBookings]);
 
   // ── Auto-fetch REAL ORIGINAL stations dynamically for any GPS location ─────────────────
   const fetchStations = useCallback(async (lat, lon, locationName = '') => {
@@ -104,11 +152,119 @@ export function useEVSystem() {
     }
   }, []);
 
-
-
   const setSimulatorMode = useCallback((mode, params = {}) => {
     socketRef.current?.emit('simulator:setMode', { mode, params });
   }, []);
+
+  // ── Booking & Queue API Action Methods ────────────────────────────────────────
+
+  const fetchStationSlots = useCallback(async (stationId, date) => {
+    setBookingError(null);
+    try {
+      const res = await axios.get(`${API_BASE}/charging-stations/${stationId}/slots`, {
+        params: { date }
+      });
+      setStationSlots(res.data);
+      return res.data;
+    } catch (e) {
+      const msg = e.response?.data?.detail || e.message;
+      setBookingError(msg);
+      throw new Error(msg);
+    }
+  }, []);
+
+  const bookSlot = useCallback(async ({ stationId, stationName, startTime, date, chargerId, chargerType, powerKw, durationMinutes = 30 }) => {
+    setBookingLoading(true);
+    setBookingError(null);
+    try {
+      const res = await axios.post(`${API_BASE}/charging-stations/${stationId}/book`, {
+        userId: 'demo',
+        vehicleId: vehicleIdRef.current || 'demo_v1',
+        stationName,
+        startTime,
+        date,
+        chargerId: chargerId || 'charger-1',
+        chargerType: chargerType || 'DC Fast Charger',
+        powerKw: powerKw || 150,
+        durationMinutes
+      });
+      await fetchUserBookings();
+      await fetchStationSlots(stationId, date);
+      setBookingLoading(false);
+      return res.data;
+    } catch (e) {
+      setBookingLoading(false);
+      const msg = e.response?.data?.detail || e.message || 'Booking failed';
+      setBookingError(msg);
+      throw new Error(msg);
+    }
+  }, [fetchUserBookings, fetchStationSlots]);
+
+  const joinQueue = useCallback(async ({ stationId, stationName, chargerType, powerKw }) => {
+    setBookingLoading(true);
+    setBookingError(null);
+    try {
+      const res = await axios.post(`${API_BASE}/charging-stations/${stationId}/queue`, {
+        userId: 'demo',
+        vehicleId: vehicleIdRef.current || 'demo_v1',
+        stationName,
+        chargerType: chargerType || 'DC Fast Charger',
+        powerKw: powerKw || 150
+      });
+      await fetchUserBookings();
+      await fetchStationSlots(stationId);
+      setBookingLoading(false);
+      return res.data;
+    } catch (e) {
+      setBookingLoading(false);
+      const msg = e.response?.data?.detail || e.message || 'Joining queue failed';
+      setBookingError(msg);
+      throw new Error(msg);
+    }
+  }, [fetchUserBookings, fetchStationSlots]);
+
+  const cancelBooking = useCallback(async (bookingId, stationId) => {
+    setBookingLoading(true);
+    setBookingError(null);
+    try {
+      const res = await axios.post(`${API_BASE}/bookings/${bookingId}/cancel`);
+      await fetchUserBookings();
+      if (stationId) {
+        await fetchStationSlots(stationId);
+      }
+      setBookingLoading(false);
+      return res.data;
+    } catch (e) {
+      setBookingLoading(false);
+      const msg = e.response?.data?.detail || e.message || 'Cancellation failed';
+      setBookingError(msg);
+      throw new Error(msg);
+    }
+  }, [fetchUserBookings, fetchStationSlots]);
+
+  const startCharging = useCallback(async (bookingId) => {
+    try {
+      const res = await axios.post(`${API_BASE}/bookings/${bookingId}/start-charging`);
+      await fetchUserBookings();
+      return res.data;
+    } catch (e) {
+      const msg = e.response?.data?.detail || e.message;
+      setBookingError(msg);
+      throw new Error(msg);
+    }
+  }, [fetchUserBookings]);
+
+  const completeCharging = useCallback(async (bookingId) => {
+    try {
+      const res = await axios.post(`${API_BASE}/bookings/${bookingId}/complete-charging`);
+      await fetchUserBookings();
+      return res.data;
+    } catch (e) {
+      const msg = e.response?.data?.detail || e.message;
+      setBookingError(msg);
+      throw new Error(msg);
+    }
+  }, [fetchUserBookings]);
 
   // Reads telemetry/vehicleId from refs (always current), origin/destination passed directly
   const runAnalysis = useCallback(async (origin, destination) => {
@@ -159,7 +315,7 @@ export function useEVSystem() {
       setIsAnalyzing(false);
       setActiveAgents([]);
     }
-  }, []); // empty deps — safe because we use refs
+  }, []);
 
   return {
     telemetry,
@@ -171,10 +327,23 @@ export function useEVSystem() {
     stations,
     stationsLoading,
     connected,
+    userBookings,
+    activeBooking,
+    stationSlots,
+    bookingLoading,
+    bookingError,
     setSimulatorMode,
     runAnalysis,
     fetchStations,
     setStations,
+    fetchStationSlots,
+    bookSlot,
+    joinQueue,
+    cancelBooking,
+    fetchUserBookings,
+    startCharging,
+    completeCharging,
   };
 }
+
 

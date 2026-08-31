@@ -88,6 +88,8 @@ export async function fetchRealStationsFromOCM(lat, lon, radiusKm = 40, timeoutM
         connector_types: ['CCS2 Fast Charger', 'Type 2 AC'],
         is_operational: true,
         is_green: true,
+        is_realtime: true,
+        source: 'OpenChargeMap API',
       };
     });
 
@@ -146,6 +148,8 @@ export async function fetchRealStationsFromOSM(lat, lon, radiusKm = 30, timeoutM
         connector_types: ['CCS2 Fast Charger', 'Type 2 AC'],
         is_operational: true,
         is_green: (rawName.toLowerCase().includes('solar') || Math.random() < 0.3),
+        is_realtime: true,
+        source: 'OpenStreetMap API',
       };
     });
 
@@ -154,6 +158,111 @@ export async function fetchRealStationsFromOSM(lat, lon, radiusKm = 30, timeoutM
     clearTimeout(timer);
     return [];
   }
+}
+
+/**
+ * Asynchronously fetch REAL live charging stations along the route polyline
+ * by querying OpenChargeMap & OpenStreetMap at waypoints along the route.
+ */
+export async function fetchRealStationsAlongRoute(routePoints) {
+  if (!routePoints || routePoints.length < 2) return [];
+
+  const total = routePoints.length;
+  const indices = [
+    0,
+    Math.floor(total * 0.25),
+    Math.floor(total * 0.50),
+    Math.floor(total * 0.75),
+    total - 1
+  ];
+
+  const waypoints = Array.from(new Set(indices)).map(i => routePoints[i]);
+
+  const fetchPromises = waypoints.map(async ([lat, lon]) => {
+    let ocm = [];
+    try {
+      ocm = await fetchRealStationsFromOCM(lat, lon, 35, 3000);
+    } catch (e) {}
+
+    let osm = [];
+    try {
+      osm = await fetchRealStationsFromOSM(lat, lon, 25, 2500);
+    } catch (e) {}
+
+    return [...ocm, ...osm];
+  });
+
+  const resultsArray = await Promise.all(fetchPromises);
+  const flattened = resultsArray.flat();
+
+  const annotated = flattened.map(st => ({
+    ...st,
+    is_realtime: true,
+    offRouteKm: minDistToPolylineKm(st.lat, st.lon, routePoints)
+  }));
+
+  const onRouteReal = annotated.filter(st => st.offRouteKm <= 8.0);
+  return deduplicateStations(onRouteReal.length > 0 ? onRouteReal : annotated);
+}
+
+
+/**
+ * Calculate perpendicular distance in km from a point (pLat, pLon) to a line segment (aLat, aLon -> bLat, bLon)
+ */
+function distToSegmentKm(pLat, pLon, aLat, aLon, bLat, bLon) {
+  const l2 = (bLat - aLat) ** 2 + (bLon - aLon) ** 2;
+  if (l2 === 0) return getDistanceKm(pLat, pLon, aLat, aLon);
+  let t = ((pLat - aLat) * (bLat - aLat) + (pLon - aLon) * (bLon - aLon)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  const projLat = aLat + t * (bLat - aLat);
+  const projLon = aLon + t * (bLon - aLon);
+  return getDistanceKm(pLat, pLon, projLat, projLon);
+}
+
+/**
+ * Calculate minimum perpendicular distance in km from a station point to the route polyline
+ */
+export function minDistToPolylineKm(pLat, pLon, routePoints) {
+  if (!routePoints || routePoints.length < 2) return 0;
+  let minD = Infinity;
+  const step = routePoints.length > 200 ? 2 : 1;
+  for (let i = 0; i < routePoints.length - 1; i += step) {
+    const a = routePoints[i];
+    const b = routePoints[Math.min(i + step, routePoints.length - 1)];
+    const d = distToSegmentKm(pLat, pLon, a[0], a[1], b[0], b[1]);
+    if (d < minD) minD = d;
+    if (minD < 0.05) break;
+  }
+  return minD;
+}
+
+/**
+ * Linearly interpolate coordinate [lat, lon] at targetDist along polyline points
+ */
+export function getPointAtDistance(routePoints, cumulativeDist, targetDist) {
+  if (!routePoints || routePoints.length === 0) return [0, 0];
+  if (routePoints.length === 1 || targetDist <= 0) return routePoints[0];
+  if (targetDist >= cumulativeDist[cumulativeDist.length - 1]) return routePoints[routePoints.length - 1];
+
+  let idx = 1;
+  while (idx < cumulativeDist.length && cumulativeDist[idx] < targetDist) {
+    idx++;
+  }
+
+  const prevDist = cumulativeDist[idx - 1];
+  const nextDist = cumulativeDist[idx];
+  const segLength = nextDist - prevDist;
+
+  if (segLength <= 0) return routePoints[idx];
+
+  const ratio = (targetDist - prevDist) / segLength;
+  const p1 = routePoints[idx - 1];
+  const p2 = routePoints[idx];
+
+  const lat = p1[0] + ratio * (p2[0] - p1[0]);
+  const lon = p1[1] + ratio * (p2[1] - p1[1]);
+
+  return [lat, lon];
 }
 
 /**
@@ -178,22 +287,19 @@ export function generateRouteStations(routePoints, origin, destination, baseStat
   const brandPool = isBike ? SCOOTER_CHARGER_BRANDS : CAR_CHARGER_BRANDS;
   const connectorTypes = isBike ? ['2-Wheel Fast Charger', 'Smart Battery Swap'] : ['CCS2 Fast Charger', 'Type 2 AC'];
 
-  // Sample stations tailored to vehicle range (every ~30km for bikes vs ~55km for cars)
-  const intervalKm = isBike ? 35 : (totalKm > 300 ? 55 : 40);
+  // Sample stations evenly along vehicle route (every ~35km for bikes vs ~45km for cars)
+  const intervalKm = isBike ? 35 : (totalKm > 300 ? 55 : 45);
   const numStops = Math.max(3, Math.floor(totalKm / intervalKm));
 
   for (let s = 1; s <= numStops; s++) {
     const targetDist = (s / (numStops + 1)) * totalKm;
 
-    // Find polyline index closest to targetDist
-    let pointIdx = 0;
-    while (pointIdx < cumulativeDist.length - 1 && cumulativeDist[pointIdx] < targetDist) {
-      pointIdx++;
-    }
-
-    const [lat, lon] = routePoints[pointIdx];
-    const offsetLat = lat + (Math.random() - 0.5) * 0.012;
-    const offsetLon = lon + (Math.random() - 0.5) * 0.012;
+    // Interpolate exact coordinate along route segment
+    const [lat, lon] = getPointAtDistance(routePoints, cumulativeDist, targetDist);
+    // Deterministic offset to position station right at highway service plaza
+    const sideOffset = (s % 2 === 0 ? 0.0008 : -0.0008);
+    const offsetLat = lat + sideOffset;
+    const offsetLon = lon + sideOffset;
 
     const brand = brandPool[(s - 1) % brandPool.length];
     const totalBays = Math.floor(Math.random() * 4) + 4;
@@ -215,12 +321,13 @@ export function generateRouteStations(routePoints, origin, destination, baseStat
       amenities: brand.amenities,
       is_operational: true,
       is_highway_hub: true,
+      offRouteKm: 0.1,
       connector_types: connectorTypes,
     });
   }
 
-  // Combine base stations and route stations, then strictly deduplicate
-  const combined = [...baseStations, ...stationsAlongRoute];
+  // Combine route stations FIRST, then base stations, then deduplicate
+  const combined = [...stationsAlongRoute, ...baseStations];
   const unique = deduplicateStations(combined);
 
   return {
@@ -229,52 +336,58 @@ export function generateRouteStations(routePoints, origin, destination, baseStat
   };
 }
 
-
 /**
  * Calculates battery discharge & pre-calculates OPTIMAL NEXT REST & CHARGE STOP
- * tailored specifically for Car vs Scooter based on vehicle estimated range.
+ * tailored specifically for Car vs Scooter based on vehicle estimated range and route alignment.
  */
-export function calculateNextRestStop(allStations, totalTripKm, currentSoc = 80, vehicleType = 'car', maxFullRange = 400, traveledKm = 0) {
+export function calculateNextRestStop(allStations, totalTripKm, currentSoc = 80, vehicleType = 'car', maxFullRange = 400, traveledKm = 0, routePoints = null) {
   if (!allStations || allStations.length === 0) return null;
 
   const currentPositionKm = traveledKm || 0;
   const isBike = vehicleType === 'bike' || vehicleType === 'scooter';
 
-  // Calculate actual remaining battery range in km from current position
-  // e.g. Ola S1 Pro (80% of 176 km = 140.8 km)
   const currentEstRangeKm = Math.max(10, Math.round((currentSoc / 100) * maxFullRange));
-
-  // Maximum reachable position before battery depletion (with 15% safety reserve)
   const maxReachPositionKm = currentPositionKm + Math.round(currentEstRangeKm * 0.85);
 
-  // Optimal target station distance ahead (at ~72% of remaining range before battery depletion)
   const targetDistanceAhead = Math.round(currentEstRangeKm * 0.72);
   const targetStopPosKm = currentPositionKm + targetDistanceAhead;
 
-  // Filter stations strictly AHEAD of vehicle's current position AND BEFORE battery depletion!
   const candidateStops = allStations
+    .map(st => {
+      const offRouteDist = (routePoints && routePoints.length >= 2)
+        ? minDistToPolylineKm(st.lat, st.lon, routePoints)
+        : (st.offRouteKm || 0);
+      return { ...st, offRouteKm: offRouteDist };
+    })
     .filter(st => {
       const distFromStart = st.distanceFromOriginKm || st.distance_km || 0;
-      return distFromStart > currentPositionKm + 2 && distFromStart <= maxReachPositionKm + 15;
+      const isAhead = distFromStart > currentPositionKm + 2 && distFromStart <= maxReachPositionKm + 25;
+      // Exclude stations that are more than 3.0 km off the main route line when route points are available
+      const isOnRoutePath = (routePoints && routePoints.length >= 2) ? (st.offRouteKm <= 3.0) : true;
+      return isAhead && isOnRoutePath;
     })
     .map(st => {
       const distFromStart = st.distanceFromOriginKm || st.distance_km || 0;
       const distAhead = Math.max(0, distFromStart - currentPositionKm);
       const socOnArrival = Math.max(2, Math.round(currentSoc - (distAhead / currentEstRangeKm) * currentSoc));
-      
+
       const proximityDelta = Math.abs(distFromStart - targetStopPosKm);
       const isBikeStation = st.name?.toLowerCase().includes('ola') || st.name?.toLowerCase().includes('ather') || st.name?.toLowerCase().includes('swap') || st.connector_types?.some(c => (c || '').includes('2-Wheel') || (c || '').includes('Swap'));
       const typeBonus = isBike ? (isBikeStation ? 60 : 10) : (!isBikeStation ? 60 : 10);
+      const highwayBonus = st.is_highway_hub ? 150 : 0;
+      const offRoutePenalty = (st.offRouteKm || 0) * 300; // Heavy penalty for off-route stations
 
-      const score = 1000 - (proximityDelta * 5) + (st.available_bays > 0 ? 80 : 0) + typeBonus;
+      const score = 1000 - (proximityDelta * 5) - offRoutePenalty + (st.available_bays > 0 ? 80 : 0) + typeBonus + highwayBonus;
       return { ...st, distAhead, socOnArrival, score };
     })
     .sort((a, b) => b.score - a.score);
 
-  const fallbackAhead = allStations.filter(st => (st.distanceFromOriginKm || 0) > currentPositionKm).sort((a, b) => (a.distanceFromOriginKm || 0) - (b.distanceFromOriginKm || 0));
+  const fallbackAhead = allStations
+    .filter(st => (st.distanceFromOriginKm || 0) > currentPositionKm && ((!routePoints || routePoints.length < 2) || (st.offRouteKm || 0) <= 4.0))
+    .sort((a, b) => (a.distanceFromOriginKm || 0) - (b.distanceFromOriginKm || 0));
+
   const bestStop = candidateStops.length > 0 ? candidateStops[0] : (fallbackAhead.length > 0 ? fallbackAhead[0] : allStations[0]);
 
-  const distFromStopToDest = Math.max(0, totalTripKm - (bestStop.distanceFromOriginKm || targetStopPosKm));
   const targetSocForDest = Math.min(90, Math.round(currentSoc + 35));
   const socToGain = Math.max(15, targetSocForDest - (bestStop.socOnArrival || 20));
   const chargeTimeMins = isBike ? 15 : Math.max(15, Math.round((socToGain / 100) * 30));
@@ -293,6 +406,7 @@ export function calculateNextRestStop(allStations, totalTripKm, currentSoc = 80,
   };
 }
 
+
 /**
  * Strict deduplication for charging stations list by ID, clean Name, and coordinate proximity
  */
@@ -307,7 +421,7 @@ export function deduplicateStations(stations = []) {
     if (!st) continue;
     const idKey = st.id ? String(st.id) : null;
     const nameKey = (st.name || '').trim().toLowerCase();
-    const coordKey = `${(st.lat || 0).toFixed(3)}_${(st.lon || 0).toFixed(3)}`;
+    const coordKey = `${(st.lat || 0).toFixed(4)}_${(st.lon || 0).toFixed(4)}`;
 
     if ((idKey && seenIds.has(idKey)) || (nameKey && seenNames.has(nameKey)) || seenCoords.has(coordKey)) {
       continue;

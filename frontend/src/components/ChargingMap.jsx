@@ -124,7 +124,7 @@ function MapBoundsUpdater({ routePoints, vehicleLat, vehicleLon, destLat, destLo
     if (points.length > 0) {
       const bounds = L.latLngBounds(points);
       if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [48, 48], maxZoom: 15 });
+        map.fitBounds(bounds, { padding: [65, 65], maxZoom: 15 });
       }
     }
   }, [map, routePoints, vehicleLat, vehicleLon, destLat, destLon, stations]);
@@ -157,23 +157,25 @@ function RouteInfoBar({ distanceM, durationS, stopsCount }) {
 
   return (
     <div style={{
-      position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
-      zIndex: 1000, display: 'flex', gap: 10, alignItems: 'center',
-      background: 'rgba(8,8,5,0.92)', border: '1px solid var(--border-strong)',
-      borderRadius: 24, padding: '8px 20px', backdropFilter: 'blur(12px)',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-      pointerEvents: 'none',
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12,
+      background: 'rgba(15, 23, 42, 0.85)', border: '1px solid rgba(0, 240, 255, 0.25)',
+      borderRadius: 12, padding: '10px 18px', backdropFilter: 'blur(12px)',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
     }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', fontFamily: 'var(--font-heading)' }}>
-        {km} km
-      </span>
-      <span style={{ color: 'var(--border-strong)' }}>·</span>
-      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>{timeLabel}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--accent)', fontFamily: 'var(--font-heading)' }}>
+          📍 {km} km
+        </span>
+        <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>⏱️ {timeLabel}</span>
+      </div>
       {stopsCount > 0 && (
-        <>
-          <span style={{ color: 'var(--border-strong)' }}>·</span>
-          <span style={{ fontSize: 11, fontWeight: 600, color: '#60a5fa' }}>⚡ {stopsCount} charger{stopsCount !== 1 ? 's' : ''} on route</span>
-        </>
+        <span style={{
+          fontSize: 11, fontWeight: 800, color: '#60a5fa', background: 'rgba(96, 165, 250, 0.12)',
+          border: '1px solid rgba(96, 165, 250, 0.3)', borderRadius: 20, padding: '4px 12px'
+        }}>
+          ⚡ {stopsCount} charger{stopsCount !== 1 ? 's' : ''} on route
+        </span>
       )}
     </div>
   );
@@ -200,6 +202,7 @@ export default function ChargingMap({
   vehicleType = 'car',
   maxRange = 400,
   traveledKm = 0,
+  onSelectStationForBooking = null,
 }) {
   const center = [vehicleLat, vehicleLon];
   const [routePoints, setRoutePoints] = useState(null);
@@ -259,10 +262,10 @@ export default function ChargingMap({
   // Calculate battery range thresholds & optimal next rest stop before vehicle moves & dynamically as it travels
   const restStopPlan = useMemo(() => {
     if (allRouteStations && allRouteStations.length > 0 && totalTripKm > 0) {
-      return calculateNextRestStop(allRouteStations, totalTripKm, soc, vehicleType, maxRange, traveledKm);
+      return calculateNextRestStop(allRouteStations, totalTripKm, soc, vehicleType, maxRange, traveledKm, routePoints);
     }
     return null;
-  }, [allRouteStations, totalTripKm, soc, vehicleType, maxRange, traveledKm]);
+  }, [allRouteStations, totalTripKm, soc, vehicleType, maxRange, traveledKm, routePoints]);
 
   // Stations located along route
   const stationsOnRoute = allRouteStations;
@@ -270,10 +273,17 @@ export default function ChargingMap({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, width: '100%' }}>
 
+      {/* Route Info Bar (positioned ABOVE map canvas for 100% unblocked map & marker view) */}
+      {routeInfo && (
+        <RouteInfoBar
+          distanceM={routeInfo.distanceM}
+          durationS={routeInfo.durationS}
+          stopsCount={stationsOnRoute.length}
+        />
+      )}
+
       {/* Map Canvas Container (isolated stacking context so Leaflet never overlaps sticky header) */}
       <div style={{ width: '100%', height: 480, position: 'relative', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', isolation: 'isolate', zIndex: 1 }}>
-
-
 
         {/* Vehicle loading overlay */}
         {loadingRoute && (
@@ -285,15 +295,6 @@ export default function ChargingMap({
           }}>
             <EVVehicleLoader label="Navigating Route…" compact={true} />
           </div>
-        )}
-
-        {/* Route info bar positioned slightly higher */}
-        {routeInfo && (
-          <RouteInfoBar
-            distanceM={routeInfo.distanceM}
-            durationS={routeInfo.durationS}
-            stopsCount={stationsOnRoute.length}
-          />
         )}
 
         <MapContainer
@@ -405,6 +406,11 @@ export default function ChargingMap({
                     {station.address && (
                       <div style={{ fontSize: 11, color: '#666', marginBottom: 6 }}>{station.address}</div>
                     )}
+                    {station.is_realtime && (
+                      <div style={{ fontSize: 9, fontWeight: 900, color: '#22c55e', background: 'rgba(34, 197, 94, 0.15)', border: '1px solid #22c55e', borderRadius: 4, padding: '2px 6px', display: 'inline-block', marginBottom: 4, textTransform: 'uppercase' }}>
+                        🌐 REALTIME LIVE ({station.source || 'OpenChargeMap API'})
+                      </div>
+                    )}
                     {isBestStop ? (
                       <div style={{ fontSize: 10, fontWeight: 800, color: '#080805', background: '#d4d414', borderRadius: 4, padding: '3px 8px', display: 'inline-block', marginBottom: 6 }}>
                         ⭐ RECOMMENDED NEXT REST & CHARGE STOP
@@ -426,7 +432,28 @@ export default function ChargingMap({
                           {station.amenities.join(' · ')}
                         </div>
                       )}
+                      {onSelectStationForBooking && (
+                        <button
+                          onClick={() => onSelectStationForBooking(station)}
+                          style={{
+                            gridColumn: 'span 2',
+                            marginTop: 8,
+                            padding: '6px 12px',
+                            background: '#00f0ff',
+                            color: '#000',
+                            border: 'none',
+                            borderRadius: 6,
+                            fontWeight: 800,
+                            fontSize: 11,
+                            cursor: 'pointer',
+                            width: '100%'
+                          }}
+                        >
+                          ⚡ View Slots & Book Charger
+                        </button>
+                      )}
                     </div>
+
                   </div>
                 </Popup>
               </Marker>

@@ -15,14 +15,18 @@ import VehicleHealthAndEstimatorPanel from './components/VehicleHealthAndEstimat
 import TripRoadmapAndBatteryPanel from './components/TripRoadmapAndBatteryPanel';
 import DriverSafetyAgentPanel from './components/DriverSafetyAgentPanel';
 import AntiGravityMode, { AntiGravityButton } from './components/AntiGravityMode';
+import StationBookingModal from './components/StationBookingModal';
+import MyBookingsPanel from './components/MyBookingsPanel';
 import { useEVSystem } from './hooks/useEVSystem';
 import { useVoiceAssistant } from './hooks/useVoiceAssistant';
 import { geocode, reverseGeocode } from './utils/geocoder';
-import { generateRouteStations, generateNearbyStations, deduplicateStations } from './utils/routeStationCalculator';
-import { getVehicleConfig, vehicleConfig } from './utils/vehicleConfig';
+import { generateRouteStations, generateNearbyStations, deduplicateStations, fetchRealStationsAlongRoute } from './utils/routeStationCalculator';
+import { getVehicleConfig } from './utils/vehicleConfig';
 import './index.css';
 
-const TABS = ['Dashboard', 'Map', 'V2V Share', 'Reports'];
+
+
+const TABS = ['Dashboard', 'Map', 'My Bookings', 'V2V Share', 'Reports'];
 const VIEWS_3D = ['vehicle', 'battery'];
 
 function getHaversineKm(lat1, lon1, lat2, lon2) {
@@ -180,12 +184,23 @@ function LocationInput({ label, icon, value, onChange, onGeocode, loading, place
 
 // ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  // eslint-disable-next-line no-unused-vars
+  const evSystem = useEVSystem();
   const {
     telemetry, activeAgents,
     analysisResult, isAnalyzing, stations, connected,
     setSimulatorMode, runAnalysis, fetchStations, setStations,
-  } = useEVSystem();
+    activeBooking, cancelBooking,
+  } = evSystem;
+
+
+  // ── Booking Modal State ──
+  const [bookingModalStation, setBookingModalStation] = useState(null);
+  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+
+  const handleOpenBookingModal = useCallback((st) => {
+    setBookingModalStation(st);
+    setIsBookingModalOpen(true);
+  }, []);
 
   // ── Station filter state ──
   const [stationFilter, setStationFilter] = useState('all');
@@ -316,7 +331,7 @@ export default function App() {
   }, [origin, isDriving, currentRouteIndex]);
 
   // Callback when ChargingMap calculates OSRM route points
-  const handleRouteLoaded = useCallback((data) => {
+  const handleRouteLoaded = useCallback(async (data) => {
     if (data && data.points && data.points.length > 0) {
       setRoutePoints(data.points);
       setCurrentRouteIndex(0);
@@ -330,7 +345,7 @@ export default function App() {
       setTotalRouteDistanceKm(+totalKm.toFixed(1));
       setSimTraveledKm(0);
 
-      // Generate route stations along polyline while preserving existing nearby stations
+      // 1. Generate route stations along polyline while preserving existing nearby stations
       setStations(prev => {
         const { allStations } = generateRouteStations(
           data.points,
@@ -340,6 +355,16 @@ export default function App() {
         );
         return allStations && allStations.length > 0 ? allStations : prev;
       });
+
+      // 2. Fetch REAL live charging stations dynamically from OpenChargeMap / OpenStreetMap APIs along route
+      try {
+        const realAlongRoute = await fetchRealStationsAlongRoute(data.points);
+        if (realAlongRoute && realAlongRoute.length > 0) {
+          setStations(prev => deduplicateStations([...realAlongRoute, ...prev]));
+        }
+      } catch (e) {
+        console.warn('Realtime route stations fetch error:', e);
+      }
     } else {
       setRoutePoints([]);
       setTotalRouteDistanceKm(0);
@@ -1042,7 +1067,6 @@ export default function App() {
                 {/* Right column */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-
                   {/* Route Planning */}
                   <DarkCard>
                     <SectionLabel>Route Planning</SectionLabel>
@@ -1252,6 +1276,7 @@ export default function App() {
                     vehicleType={currentVehicleConfig.type}
                     maxRange={currentVehicleConfig.maxRange}
                     traveledKm={activeTelemetry?.traveledKm || 0}
+                    onSelectStationForBooking={handleOpenBookingModal}
                   />
                 </div>
               </DarkCard>
@@ -1316,8 +1341,13 @@ export default function App() {
                           <DarkCard key={s.id || s.name} className="hover-lift" style={{ padding: 18, background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 12 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                               <div>
-                                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15, color: '#fff' }}>
-                                  {s.name}
+                                <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 800, fontSize: 15, color: '#fff', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                  <span>{s.name}</span>
+                                  {s.is_realtime && (
+                                    <span style={{ fontSize: 9, fontWeight: 900, color: '#22c55e', background: 'rgba(34, 197, 94, 0.15)', border: '1px solid #22c55e', padding: '1px 6px', borderRadius: 4, textTransform: 'uppercase' }}>
+                                      🌐 Realtime
+                                    </span>
+                                  )}
                                 </div>
                                 <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                                   📍 {s.address || `Km ${s.distanceFromOriginKm || Math.round(s.distance_km || 0)}`}
@@ -1363,14 +1393,25 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* Action Button */}
-                            <button
-                              onClick={() => setDestination({ lat: s.lat, lon: s.lon, display_name: s.name })}
-                              className="btn-primary"
-                              style={{ width: '100%', padding: '8px 12px', fontSize: 12, justifyContent: 'center' }}
-                            >
-                              📍 Route & Navigate to Station
-                            </button>
+                            {/* Action Buttons */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                              <button
+                                onClick={() => setDestination({ lat: s.lat, lon: s.lon, display_name: s.name })}
+                                className="btn-primary"
+                                style={{ padding: '8px 12px', fontSize: 11, justifyContent: 'center' }}
+                              >
+                                📍 Route
+                              </button>
+                              <button
+                                onClick={() => handleOpenBookingModal(s)}
+                                style={{
+                                  background: 'rgba(0, 240, 255, 0.15)', border: '1px solid #00f0ff',
+                                  color: '#00f0ff', padding: '8px 12px', borderRadius: 6, fontSize: 11, fontWeight: 800, cursor: 'pointer'
+                                }}
+                              >
+                                ⚡ Book Slot
+                              </button>
+                            </div>
                           </DarkCard>
                         ))}
                       </div>
@@ -1380,6 +1421,16 @@ export default function App() {
               </div>
             </motion.div>
 
+          )}
+
+          {/* ── MY BOOKINGS ── */}
+          {activeTab === 'My Bookings' && (
+            <motion.div key="my-bookings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+              <MyBookingsPanel
+                useEVSystemHook={evSystem}
+                onFindChargerClick={() => setActiveTab('Map')}
+              />
+            </motion.div>
           )}
 
           {/* ── V2V CHARGE TRANSFER ── */}
@@ -1413,6 +1464,15 @@ export default function App() {
         isAnalyzing={isAnalyzing}
         onRunAnalysis={handleAnalyze}
       />
+
+      {/* ── Charging Station Details & Slot Booking Modal ── */}
+      <StationBookingModal
+        station={bookingModalStation}
+        isOpen={isBookingModalOpen}
+        onClose={() => setIsBookingModalOpen(false)}
+        useEVSystemHook={evSystem}
+      />
     </div>
   );
 }
+

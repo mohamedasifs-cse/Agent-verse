@@ -45,3 +45,42 @@ class AnalyzeRequest(BaseModel):
 class ModeRequest(BaseModel):
     mode: str
     params: Optional[Dict[str, Any]] = None
+
+class BookingModel(BaseModel):
+    id: Optional[str] = None
+    bookingId: str
+    userId: str = "demo"
+    vehicleId: Optional[str] = "demo_v1"
+    stationId: str
+    stationName: str
+    chargerId: str = "charger-1"
+    chargerType: str = "DC Fast Charger"
+    powerKw: float = 150.0
+    date: str
+    startTime: str
+    endTime: str
+    durationMinutes: int = 30
+    status: str = "BOOKED"  # BOOKED | WAITING | CHARGING | COMPLETED | CANCELLED | EXPIRED
+    queuePosition: int = 0
+    estimatedWaitTime: int = 0
+    createdAt: str = Field(default_factory=lambda: datetime.datetime.utcnow().isoformat() + "Z")
+    updatedAt: str = Field(default_factory=lambda: datetime.datetime.utcnow().isoformat() + "Z")
+
+class BookSlotRequest(BaseModel):
+    userId: str = "demo"
+    vehicleId: Optional[str] = "demo_v1"
+    stationName: str
+    chargerId: Optional[str] = "charger-1"
+    chargerType: Optional[str] = "DC Fast Charger"
+    powerKw: Optional[float] = 150.0
+    date: Optional[str] = None
+    startTime: str
+    durationMinutes: Optional[int] = 30
+
+class JoinQueueRequest(BaseModel):
+    userId: str = "demo"
+    vehicleId: Optional[str] = "demo_v1"
+    stationName: str
+    chargerType: Optional[str] = "DC Fast Charger"
+    powerKw: Optional[float] = 150.0
+
